@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 package org.redisson.reactive;
 
 import java.lang.reflect.Method;
-import java.util.function.Supplier;
+import java.util.concurrent.Callable;
 
 import org.redisson.api.RFuture;
 import org.redisson.misc.ProxyBuilder;
@@ -37,15 +37,11 @@ public class ReactiveProxyBuilder {
         return ProxyBuilder.create(new Callback() {
             @Override
             public Object execute(Method mm, Object instance, Method instanceMethod, Object[] args) {
-                return commandExecutor.reactive(new Supplier<RFuture<Object>>() {
+                return commandExecutor.reactive(new Callable<RFuture<Object>>() {
                     @SuppressWarnings("unchecked")
                     @Override
-                    public RFuture<Object> get() {
-                        try {
-                            return (RFuture<Object>) mm.invoke(instance, args);
-                        } catch (Exception e) {
-                            throw new IllegalStateException(e);
-                        }
+                    public RFuture<Object> call() throws Exception {
+                        return (RFuture<Object>) mm.invoke(instance, args);
                     }
                 });
             }

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 package org.redisson.api;
 
 import java.util.Collection;
+import java.util.List;
 
 import org.redisson.api.condition.Condition;
 import org.redisson.api.condition.Conditions;
@@ -109,14 +110,21 @@ public interface RLiveObjectService {
      * <b>NON NULL</b> field values to the redis server. Only when the it does
      * not already exist.
      * 
-     * If this object is not in redis then a new hash key will be created to
-     * store it.
-     *
      * @param <T> Entity type
      * @param detachedObject - not proxied object
      * @return proxied object
      */
     <T> T persist(T detachedObject);
+
+    /**
+     * Returns proxied attached objects for the detached objects. Stores all the
+     * <b>NON NULL</b> field values.
+     *
+     * @param <T> Entity type
+     * @param detachedObjects - not proxied objects
+     * @return list of proxied objects
+     */
+    <T> List<T> persist(T... detachedObjects);
 
     /**
      * Returns unproxied detached object for the attached object.
@@ -156,12 +164,10 @@ public interface RLiveObjectService {
     <T> RLiveObject asLiveObject(T instance);
 
     /**
-     * To cast the instance to RExpirable instance.
+     * Use {@link #asRMap(Object)} method instead
      * 
-     * @param <T> type of instance
-     * @param instance - live object
-     * @return RExpirable compatible object
      */
+    @Deprecated
     <T> RExpirable asRExpirable(T instance);
 
     /**

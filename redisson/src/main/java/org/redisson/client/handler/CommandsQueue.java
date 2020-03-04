@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,11 +15,8 @@
  */
 package org.redisson.client.handler;
 
-import java.io.IOException;
-import java.util.List;
-import java.util.Queue;
-import java.util.regex.Pattern;
-
+import io.netty.channel.*;
+import io.netty.util.AttributeKey;
 import org.redisson.client.ChannelName;
 import org.redisson.client.WriteRedisConnectionException;
 import org.redisson.client.protocol.CommandData;
@@ -29,14 +26,11 @@ import org.redisson.misc.LogHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelDuplexHandler;
-import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelFutureListener;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelPromise;
-import io.netty.util.AttributeKey;
-import io.netty.util.internal.PlatformDependent;
+import java.io.IOException;
+import java.util.List;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.regex.Pattern;
 
 /**
  *
@@ -53,14 +47,11 @@ public class CommandsQueue extends ChannelDuplexHandler {
     
     public static final AttributeKey<QueueCommand> CURRENT_COMMAND = AttributeKey.valueOf("promise");
 
-    private final Queue<QueueCommandHolder> queue = PlatformDependent.newMpscQueue();
+    private final Queue<QueueCommandHolder> queue = new ConcurrentLinkedQueue<>();
 
-    private final ChannelFutureListener listener = new ChannelFutureListener() {
-        @Override
-        public void operationComplete(ChannelFuture future) throws Exception {
-            if (!future.isSuccess() && future.channel().isActive()) {
-                sendNextCommand(future.channel());
-            }
+    private final ChannelFutureListener listener = future -> {
+        if (!future.isSuccess() && future.channel().isActive()) {
+            sendNextCommand(future.channel());
         }
     };
 

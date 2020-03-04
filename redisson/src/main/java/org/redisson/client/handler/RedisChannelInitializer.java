@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -106,7 +106,7 @@ public class RedisChannelInitializer extends ChannelInitializer<Channel> {
     
     private void initSsl(final RedisClientConfig config, Channel ch) throws KeyStoreException, IOException,
             NoSuchAlgorithmException, CertificateException, SSLException, UnrecoverableKeyException {
-        if (!"rediss".equals(config.getAddress().getScheme())) {
+        if (!config.getAddress().isSsl()) {
             return;
         }
 
@@ -119,7 +119,7 @@ public class RedisChannelInitializer extends ChannelInitializer<Channel> {
         if (config.getSslTruststore() != null) {
             KeyStore keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
             
-            InputStream stream = config.getSslTruststore().toURL().openStream();
+            InputStream stream = config.getSslTruststore().openStream();
             try {
                 char[] password = null;
                 if (config.getSslTruststorePassword() != null) {
@@ -138,7 +138,7 @@ public class RedisChannelInitializer extends ChannelInitializer<Channel> {
         if (config.getSslKeystore() != null){
             KeyStore keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
             
-            InputStream stream = config.getSslKeystore().toURL().openStream();
+            InputStream stream = config.getSslKeystore().openStream();
             char[] password = null;
             if (config.getSslKeystorePassword() != null) {
                 password = config.getSslKeystorePassword().toCharArray();

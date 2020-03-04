@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@ package org.redisson.client;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.net.URI;
 import java.net.UnknownHostException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -28,6 +27,7 @@ import org.redisson.api.RFuture;
 import org.redisson.client.handler.RedisChannelInitializer;
 import org.redisson.client.handler.RedisChannelInitializer.Type;
 import org.redisson.misc.RPromise;
+import org.redisson.misc.RedisURI;
 import org.redisson.misc.RedissonPromise;
 
 import io.netty.bootstrap.Bootstrap;
@@ -63,7 +63,7 @@ public final class RedisClient {
     private final AtomicReference<RFuture<InetSocketAddress>> resolvedAddrFuture = new AtomicReference<RFuture<InetSocketAddress>>();
     private final Bootstrap bootstrap;
     private final Bootstrap pubSubBootstrap;
-    private final URI uri;
+    private final RedisURI uri;
     private InetSocketAddress resolvedAddr;
     private final ChannelGroup channels;
 
@@ -151,6 +151,10 @@ public final class RedisClient {
         return config;
     }
 
+    public Timer getTimer() {
+        return timer;
+    }
+    
     public RedisConnection connect() {
         try {
             return connectAsync().syncUninterruptibly().getNow();
@@ -311,14 +315,12 @@ public final class RedisClient {
     }
 
     public RFuture<Void> shutdownAsync() {
-        for (Channel channel : channels) {
-            RedisConnection connection = RedisConnection.getFrom(channel);
-            if (connection != null) {
-                connection.closeAsync();
-            }
+        RPromise<Void> result = new RedissonPromise<Void>();
+        if (channels.isEmpty()) {
+            shutdown(result);
+            return result;
         }
-
-        final RPromise<Void> result = new RedissonPromise<Void>();
+        
         ChannelGroupFuture channelsFuture = channels.newCloseFuture();
         channelsFuture.addListener(new FutureListener<Void>() {
             @Override
@@ -328,43 +330,53 @@ public final class RedisClient {
                     return;
                 }
                 
-                if (!hasOwnTimer && !hasOwnExecutor && !hasOwnResolver && !hasOwnGroup) {
-                    result.trySuccess(null);
-                    return;
-                }
-                
-                Thread t = new Thread() {
-                    @Override
-                    public void run() {
-                        try {
-                            if (hasOwnTimer) {
-                                timer.stop();
-                            }
-                            
-                            if (hasOwnExecutor) {
-                                executor.shutdown();
-                                executor.awaitTermination(15, TimeUnit.SECONDS);
-                            }
-                            
-                            if (hasOwnResolver) {
-                                bootstrap.config().resolver().close();
-                            }
-                            if (hasOwnGroup) {
-                                bootstrap.config().group().shutdownGracefully();
-                            }
-                        } catch (Exception e) {
-                            result.tryFailure(e);
-                            return;
-                        }
-                        
-                        result.trySuccess(null);
-                    }
-                };
-                t.start();
+                shutdown(result);
             }
         });
         
+        for (Channel channel : channels) {
+            RedisConnection connection = RedisConnection.getFrom(channel);
+            if (connection != null) {
+                connection.closeAsync();
+            }
+        }
+        
         return result;
+    }
+
+    private void shutdown(RPromise<Void> result) {
+        if (!hasOwnTimer && !hasOwnExecutor && !hasOwnResolver && !hasOwnGroup) {
+            result.trySuccess(null);
+        } else {
+            Thread t = new Thread() {
+                @Override
+                public void run() {
+                    try {
+                        if (hasOwnTimer) {
+                            timer.stop();
+                        }
+                        
+                        if (hasOwnExecutor) {
+                            executor.shutdown();
+                            executor.awaitTermination(15, TimeUnit.SECONDS);
+                        }
+                        
+                        if (hasOwnResolver) {
+                            bootstrap.config().resolver().close();
+                        }
+                        if (hasOwnGroup) {
+                            bootstrap.config().group().shutdownGracefully();
+                        }
+                    } catch (Exception e) {
+                        result.tryFailure(e);
+                        return;
+                    }
+                    
+                    result.trySuccess(null);
+                }
+            };
+            t.start();
+        }
     }
 
     @Override

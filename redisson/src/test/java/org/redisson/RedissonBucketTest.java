@@ -14,10 +14,7 @@ import org.junit.Test;
 import org.redisson.RedisRunner.FailedToStartRedisException;
 import org.redisson.RedisRunner.KEYSPACE_EVENTS_OPTIONS;
 import org.redisson.RedisRunner.RedisProcess;
-import org.redisson.api.DeletedObjectListener;
-import org.redisson.api.ExpiredObjectListener;
-import org.redisson.api.RBucket;
-import org.redisson.api.RedissonClient;
+import org.redisson.api.*;
 import org.redisson.config.Config;
 
 public class RedissonBucketTest extends BaseTest {
@@ -26,7 +23,7 @@ public class RedissonBucketTest extends BaseTest {
     public void testDeletedListener() throws FailedToStartRedisException, IOException, InterruptedException {
         RedisProcess instance = new RedisRunner()
                 .nosave()
-                .port(6379)
+                .randomPort()
                 .randomDir()
                 .notifyKeyspaceEvents( 
                                     KEYSPACE_EVENTS_OPTIONS.E,
@@ -34,7 +31,7 @@ public class RedissonBucketTest extends BaseTest {
                 .run();
         
         Config config = new Config();
-        config.useSingleServer().setAddress("redis://127.0.0.1:6379");
+        config.useSingleServer().setAddress(instance.getRedisServerAddressAndPort());
         RedissonClient redisson = Redisson.create(config);
         
         RBucket<Integer> al = redisson.getBucket("test");
@@ -55,10 +52,42 @@ public class RedissonBucketTest extends BaseTest {
     }
     
     @Test
+    public void testSetListener() throws FailedToStartRedisException, IOException, InterruptedException {
+        RedisProcess instance = new RedisRunner()
+                .nosave()
+                .randomPort()
+                .randomDir()
+                .notifyKeyspaceEvents(
+                                    KEYSPACE_EVENTS_OPTIONS.E,
+                                    KEYSPACE_EVENTS_OPTIONS.$)
+                .run();
+
+        Config config = new Config();
+        config.useSingleServer().setAddress(instance.getRedisServerAddressAndPort());
+        RedissonClient redisson = Redisson.create(config);
+
+        RBucket<Integer> al = redisson.getBucket("test");
+        CountDownLatch latch = new CountDownLatch(1);
+        al.addListener(new SetObjectListener() {
+            @Override
+            public void onSet(String name) {
+                latch.countDown();
+            }
+        });
+        al.set(1);
+
+        assertThat(latch.await(1, TimeUnit.SECONDS)).isTrue();
+
+        redisson.shutdown();
+        instance.stop();
+    }
+
+    
+    @Test
     public void testExpiredListener() throws FailedToStartRedisException, IOException, InterruptedException {
         RedisProcess instance = new RedisRunner()
                 .nosave()
-                .port(6379)
+                .randomPort()
                 .randomDir()
                 .notifyKeyspaceEvents( 
                                     KEYSPACE_EVENTS_OPTIONS.E,
@@ -66,7 +95,7 @@ public class RedissonBucketTest extends BaseTest {
                 .run();
         
         Config config = new Config();
-        config.useSingleServer().setAddress("redis://127.0.0.1:6379");
+        config.useSingleServer().setAddress(instance.getRedisServerAddressAndPort());
         RedissonClient redisson = Redisson.create(config);
         
         RBucket<Integer> al = redisson.getBucket("test");
@@ -90,7 +119,7 @@ public class RedissonBucketTest extends BaseTest {
         Assume.assumeTrue(RedisRunner.getDefaultRedisServerInstance().getRedisVersion().compareTo("4.0.0") > 0);
         RBucket<Integer> al = redisson.getBucket("test");
         al.set(1234);
-        assertThat(al.sizeInMemory()).isEqualTo(55);
+        assertThat(al.sizeInMemory()).isEqualTo(54);
     }
     
     @Test

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -107,7 +107,7 @@ abstract class ConnectionPool<T extends RedisConnection> {
         if ((checkFreezed && entry.isFreezed()) || !tryAcquireConnection(entry)) {
             int totalInitializedConnections = minimumIdleSize - initializedConnections.get();
             Throwable cause = new RedisConnectionException(
-                    "Unable to init enough connections amount! Only " + totalInitializedConnections + " from " + minimumIdleSize + " were initialized. Server: "
+                    "Unable to init enough connections amount! Only " + totalInitializedConnections + " of " + minimumIdleSize + " were initialized. Server: "
                                         + entry.getClient().getAddr());
             initPromise.tryFailure(cause);
             return;
@@ -155,7 +155,7 @@ abstract class ConnectionPool<T extends RedisConnection> {
                                 errorMsg = "Unable to connect to Redis server: " + entry.getClient().getAddr();
                             } else {
                                 errorMsg = "Unable to init enough connections amount! Only " + totalInitializedConnections 
-                                        + " from " + minimumIdleSize + " were initialized. Redis server: " + entry.getClient().getAddr();
+                                        + " of " + minimumIdleSize + " were initialized. Redis server: " + entry.getClient().getAddr();
                             }
                             Throwable cause = new RedisConnectionException(errorMsg, e);
                             initPromise.tryFailure(cause);
@@ -193,7 +193,7 @@ abstract class ConnectionPool<T extends RedisConnection> {
                 iterator.remove();
             }
         }
-        while (!entriesCopy.isEmpty()) {
+        if (!entriesCopy.isEmpty()) {
             ClientConnectionsEntry entry = config.getLoadBalancer().getEntry(entriesCopy);
             return acquireConnection(command, entry);
         }

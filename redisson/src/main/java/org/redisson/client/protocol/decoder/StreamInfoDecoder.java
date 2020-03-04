@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -46,16 +46,20 @@ public class StreamInfoDecoder implements MultiDecoder<StreamInfo<Object, Object
         info.setLastGeneratedId(StreamIdConvertor.INSTANCE.convert(parts.get(9)));
 
         List<?> firstEntry = (List<?>) parts.get(11);
-        StreamMessageId firstId = StreamIdConvertor.INSTANCE.convert(firstEntry.get(0));
-        Map<Object, Object> firstData = (Map<Object, Object>) firstEntry.get(1);
-        StreamInfo.Entry<Object, Object> first = new StreamInfo.Entry<>(firstId, firstData);
-        info.setFirstEntry(first);
+        if (firstEntry != null) {
+            StreamMessageId firstId = StreamIdConvertor.INSTANCE.convert(firstEntry.get(0));
+            Map<Object, Object> firstData = (Map<Object, Object>) firstEntry.get(1);
+            StreamInfo.Entry<Object, Object> first = new StreamInfo.Entry<>(firstId, firstData);
+            info.setFirstEntry(first);
+        }
 
         List<?> lastEntry = (List<?>) parts.get(13);
-        StreamMessageId lastId = StreamIdConvertor.INSTANCE.convert(lastEntry.get(0));
-        Map<Object, Object> lastData = (Map<Object, Object>) lastEntry.get(1);
-        StreamInfo.Entry<Object, Object> last = new StreamInfo.Entry<>(lastId, lastData);
-        info.setLastEntry(last);
+        if (lastEntry != null) {
+            StreamMessageId lastId = StreamIdConvertor.INSTANCE.convert(lastEntry.get(0));
+            Map<Object, Object> lastData = (Map<Object, Object>) lastEntry.get(1);
+            StreamInfo.Entry<Object, Object> last = new StreamInfo.Entry<>(lastId, lastData);
+            info.setLastEntry(last);
+        }
         return info;
     }
 

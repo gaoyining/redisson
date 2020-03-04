@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -54,7 +54,7 @@ import io.netty.buffer.ByteBuf;
 public abstract class RedissonObject implements RObject {
 
     protected final CommandAsyncExecutor commandExecutor;
-    private String name;
+    protected String name;
     protected final Codec codec;
 
     public RedissonObject(Codec codec, CommandAsyncExecutor commandExecutor, String name) {
@@ -67,10 +67,6 @@ public abstract class RedissonObject implements RObject {
         this(commandExecutor.getConnectionManager().getCodec(), commandExecutor, name);
     }
 
-    protected boolean await(RFuture<?> future, long timeout, TimeUnit timeoutUnit) throws InterruptedException {
-        return commandExecutor.await(future, timeout, timeoutUnit);
-    }
-    
     public static String prefixName(String prefix, String name) {
         if (name.contains("{")) {
             return prefix + ":" + name;
@@ -206,7 +202,11 @@ public abstract class RedissonObject implements RObject {
     public RFuture<Boolean> deleteAsync() {
         return commandExecutor.writeAsync(getName(), StringCodec.INSTANCE, RedisCommands.DEL_BOOL, getName());
     }
-    
+
+    protected RFuture<Boolean> deleteAsync(String... keys) {
+        return commandExecutor.writeAsync(getName(), StringCodec.INSTANCE, RedisCommands.DEL_OBJECTS, keys);
+    }
+
     @Override
     public boolean unlink() {
         return get(unlinkAsync());
@@ -241,9 +241,17 @@ public abstract class RedissonObject implements RObject {
     public Codec getCodec() {
         return codec;
     }
-    
+
+    protected List<ByteBuf> encode(Object... values) {
+        List<ByteBuf> result = new ArrayList<>(values.length);
+        for (Object object : values) {
+            result.add(encode(object));
+        }
+        return result;
+    }
+
     protected List<ByteBuf> encode(Collection<?> values) {
-        List<ByteBuf> result = new ArrayList<ByteBuf>(values.size());
+        List<ByteBuf> result = new ArrayList<>(values.size());
         for (Object object : values) {
             result.add(encode(object));
         }

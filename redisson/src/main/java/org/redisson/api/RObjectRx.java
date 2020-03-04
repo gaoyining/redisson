@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ import io.reactivex.Completable;
 import io.reactivex.Single;
 
 /**
- * Base interface for all Redisson objects
+ * Base RxJava2 interface for all Redisson objects
  *
  * @author Nikita Koksharov
  *
@@ -33,6 +33,13 @@ public interface RObjectRx {
     String getName();
     
     Codec getCodec();
+    
+    /**
+     * Returns bytes amount used by object in Redis memory. 
+     * 
+     * @return size in bytes
+     */
+    Single<Long> sizeInMemory();
     
     /**
      * Restores object using its state returned by {@link #dump()} method.

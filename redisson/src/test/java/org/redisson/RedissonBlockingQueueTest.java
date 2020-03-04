@@ -15,6 +15,8 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.awaitility.Awaitility;
+import org.awaitility.Duration;
 import org.junit.Assert;
 import org.junit.Test;
 import org.redisson.ClusterRunner.ClusterProcesses;
@@ -121,7 +123,7 @@ public class RedissonBlockingQueueTest extends RedissonQueueTest {
         
         t.join();
         
-        await().atMost(7, TimeUnit.SECONDS).until(() -> executed.get());
+        await().atMost(7, TimeUnit.SECONDS).untilTrue(executed);
         
         redisson.shutdown();
         runner.stop();
@@ -169,39 +171,40 @@ public class RedissonBlockingQueueTest extends RedissonQueueTest {
         RedisRunner.RedisProcess master = new RedisRunner()
                 .nosave()
                 .randomDir()
+                .randomPort()
                 .run();
         RedisRunner.RedisProcess slave1 = new RedisRunner()
-                .port(6380)
+                .randomPort()
                 .nosave()
                 .randomDir()
-                .slaveof("127.0.0.1", 6379)
+                .slaveof("127.0.0.1", master.getRedisServerPort())
                 .run();
         RedisRunner.RedisProcess slave2 = new RedisRunner()
-                .port(6381)
+                .randomPort()
                 .nosave()
                 .randomDir()
-                .slaveof("127.0.0.1", 6379)
+                .slaveof("127.0.0.1", master.getRedisServerPort())
                 .run();
         RedisRunner.RedisProcess sentinel1 = new RedisRunner()
                 .nosave()
                 .randomDir()
-                .port(26379)
+                .randomPort()
                 .sentinel()
-                .sentinelMonitor("myMaster", "127.0.0.1", 6379, 2)
+                .sentinelMonitor("myMaster", "127.0.0.1", master.getRedisServerPort(), 2)
                 .run();
         RedisRunner.RedisProcess sentinel2 = new RedisRunner()
                 .nosave()
                 .randomDir()
-                .port(26380)
+                .randomPort()
                 .sentinel()
-                .sentinelMonitor("myMaster", "127.0.0.1", 6379, 2)
+                .sentinelMonitor("myMaster", "127.0.0.1", master.getRedisServerPort(), 2)
                 .run();
         RedisRunner.RedisProcess sentinel3 = new RedisRunner()
                 .nosave()
                 .randomDir()
-                .port(26381)
+                .randomPort()
                 .sentinel()
-                .sentinelMonitor("myMaster", "127.0.0.1", 6379, 2)
+                .sentinelMonitor("myMaster", "127.0.0.1", master.getRedisServerPort(), 2)
                 .run();
         
         Thread.sleep(5000); 
@@ -277,6 +280,55 @@ public class RedissonBlockingQueueTest extends RedissonQueueTest {
         runner.stop();
         
         redisson.shutdown();
+    }
+    
+    @Test
+    public void testTakeInterrupted() throws InterruptedException {
+        final AtomicBoolean interrupted = new AtomicBoolean();
+        
+        Thread t = new Thread() {
+            public void run() {
+                try {
+                    RBlockingQueue<Integer> queue1 = getQueue(redisson);
+                    queue1.take();
+                } catch (InterruptedException e) {
+                    interrupted.set(true);
+                }
+            };
+        };
+
+        t.start();
+        t.join(1000);
+
+        t.interrupt();
+        Awaitility.await().atMost(Duration.ONE_SECOND).untilTrue(interrupted);
+
+        RBlockingQueue<Integer> q = getQueue(redisson);
+        q.add(1);
+        Thread.sleep(1000);
+        assertThat(q.contains(1)).isTrue();
+    }
+
+    @Test
+    public void testPollInterrupted() throws InterruptedException {
+        final AtomicBoolean interrupted = new AtomicBoolean();
+        
+        Thread t = new Thread() {
+            public void run() {
+                try {
+                    RBlockingQueue<Integer> queue1 = getQueue(redisson);
+                    queue1.poll(10, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    interrupted.set(true);
+                }
+            };
+        };
+        
+        t.start();
+        t.join(1000);
+        
+        t.interrupt();
+        Awaitility.await().atMost(Duration.ONE_SECOND).untilTrue(interrupted);
     }
     
     @Test
@@ -498,37 +550,6 @@ public class RedissonBlockingQueueTest extends RedissonQueueTest {
     }
 
     @Test
-    public void testBlockingQueue() {
-
-        RBlockingQueue<Integer> queue = getQueue();
-
-        ExecutorService executor = Executors.newFixedThreadPool(10);
-
-        final AtomicInteger counter = new AtomicInteger();
-        int total = 100;
-        for (int i = 0; i < total; i++) {
-            // runnable won't be executed in any particular order, and hence, int value as well.
-            executor.submit(() -> {
-                getQueue().add(counter.incrementAndGet());
-            });
-        }
-        int count = 0;
-        while (count < total) {
-            try {
-                // blocking
-                int item = queue.take();
-                assertThat(item > 0 && item <= total).isTrue();
-            } catch (InterruptedException exception) {
-                Assert.fail();
-            }
-            count++;
-        }
-
-        assertThat(counter.get()).isEqualTo(total);
-        queue.delete();
-    }
-
-    @Test
     public void testDrainToCollection() throws Exception {
         RBlockingQueue<Object> queue1 = getQueue();
         queue1.put(1);
@@ -588,4 +609,31 @@ public class RedissonBlockingQueueTest extends RedissonQueueTest {
             Assert.fail(e.getLocalizedMessage());
         }
     }
+
+    @Test
+    public void testSubscribeOnElements() throws InterruptedException {
+        RBlockingQueue<Integer> q = redisson.getBlockingQueue("test");
+        Set<Integer> values = new HashSet<>();
+        int listnerId = q.subscribeOnElements(v -> {
+            values.add(v);
+        });
+
+        for (int i = 0; i < 10; i++) {
+            q.add(i);
+        }
+
+        Awaitility.await().atMost(Duration.ONE_SECOND).until(() -> {
+            return values.size() == 10;
+        });
+
+        q.unsubscribe(listnerId);
+
+        q.add(11);
+        q.add(12);
+
+        Thread.sleep(1000);
+
+        assertThat(values).hasSize(10);
+    }
+
 }

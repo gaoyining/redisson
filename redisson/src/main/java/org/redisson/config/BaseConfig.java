@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
  */
 package org.redisson.config;
 
-import java.net.URI;
+import java.net.URL;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -83,11 +83,11 @@ class BaseConfig<T extends BaseConfig<T>> {
     
     private SslProvider sslProvider = SslProvider.JDK;
     
-    private URI sslTruststore;
+    private URL sslTruststore;
     
     private String sslTruststorePassword;
     
-    private URI sslKeystore;
+    private URL sslKeystore;
     
     private String sslKeystorePassword;
 
@@ -180,7 +180,6 @@ class BaseConfig<T extends BaseConfig<T>> {
      * <p>
      * Default is <code>1500</code> milliseconds
      *
-     * @see retryAttempts
      * @param retryInterval - time in milliseconds
      * @return config
      */
@@ -257,6 +256,8 @@ class BaseConfig<T extends BaseConfig<T>> {
      * If pooled connection not used for a <code>timeout</code> time
      * and current connections amount bigger than minimum idle connections pool size,
      * then it will closed and removed from pool.
+     * <p>
+     * Default is <code>10000</code> milliseconds.
      *
      * @param idleConnectionTimeout - timeout in milliseconds
      * @return config
@@ -322,7 +323,7 @@ class BaseConfig<T extends BaseConfig<T>> {
         return (T) this;
     }
 
-    public URI getSslTruststore() {
+    public URL getSslTruststore() {
         return sslTruststore;
     }
 
@@ -332,7 +333,7 @@ class BaseConfig<T extends BaseConfig<T>> {
      * @param sslTruststore - path
      * @return config
      */
-    public T setSslTruststore(URI sslTruststore) {
+    public T setSslTruststore(URL sslTruststore) {
         this.sslTruststore = sslTruststore;
         return (T) this;
     }
@@ -352,7 +353,7 @@ class BaseConfig<T extends BaseConfig<T>> {
         return (T) this;
     }
 
-    public URI getSslKeystore() {
+    public URL getSslKeystore() {
         return sslKeystore;
     }
 
@@ -362,7 +363,7 @@ class BaseConfig<T extends BaseConfig<T>> {
      * @param sslKeystore - path to keystore
      * @return config
      */
-    public T setSslKeystore(URI sslKeystore) {
+    public T setSslKeystore(URL sslKeystore) {
         this.sslKeystore = sslKeystore;
         return (T) this;
     }

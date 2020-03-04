@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -55,7 +55,7 @@ public class RedissonRateLimiter extends RedissonObject implements RRateLimiter 
     }
     
     String getClientValueName() {
-        return suffixName(getValueName(), commandExecutor.getConnectionManager().getId().toString());
+        return suffixName(getValueName(), commandExecutor.getConnectionManager().getId());
     }
     
     @Override
@@ -126,7 +126,7 @@ public class RedissonRateLimiter extends RedissonObject implements RRateLimiter 
     public RFuture<Boolean> tryAcquireAsync(long permits, long timeout, TimeUnit unit) {
         RPromise<Boolean> promise = new RedissonPromise<Boolean>();
         long timeoutInMillis = -1;
-        if (timeout > 0) {
+        if (timeout >= 0) {
             timeoutInMillis = unit.toMillis(timeout);
         }
         tryAcquireAsync(permits, promise, timeoutInMillis);
@@ -200,12 +200,13 @@ public class RedissonRateLimiter extends RedissonObject implements RRateLimiter 
                          + "return nil; "
                      + "end; "
               + "else "
+                     + "assert(tonumber(rate) >= tonumber(ARGV[1]), 'Requested permits amount could not exceed defined rate'); "
                      + "redis.call('set', valueName, rate, 'px', interval); "
                      + "redis.call('decrby', valueName, ARGV[1]); "
                      + "return nil; "
               + "end;",
-                Arrays.<Object>asList(getName(), getValueName(), getClientValueName()), 
-                value, commandExecutor.getConnectionManager().getId().toString());
+                Arrays.asList(getName(), getValueName(), getClientValueName()),
+                value);
     }
 
     @Override
@@ -219,7 +220,7 @@ public class RedissonRateLimiter extends RedissonObject implements RRateLimiter 
                 "redis.call('hsetnx', KEYS[1], 'rate', ARGV[1]);"
               + "redis.call('hsetnx', KEYS[1], 'interval', ARGV[2]);"
               + "return redis.call('hsetnx', KEYS[1], 'type', ARGV[3]);",
-                Collections.<Object>singletonList(getName()), rate, unit.toMillis(rateInterval), type.ordinal());
+                Collections.singletonList(getName()), rate, unit.toMillis(rateInterval), type.ordinal());
     }
     
     private static final RedisCommand HGETALL = new RedisCommand("HGETALL", new MultiDecoder<RateLimiterConfig>() {
@@ -254,5 +255,34 @@ public class RedissonRateLimiter extends RedissonObject implements RRateLimiter 
     public RFuture<RateLimiterConfig> getConfigAsync() {
         return commandExecutor.readAsync(getName(), StringCodec.INSTANCE, HGETALL, getName());
     }
-    
+
+    @Override
+    public long availablePermits() {
+        return get(availablePermitsAsync());
+    }
+
+    @Override
+    public RFuture<Long> availablePermitsAsync() {
+        return commandExecutor.evalWriteAsync(getName(), LongCodec.INSTANCE, RedisCommands.EVAL_LONG,
+                "local rate = redis.call('hget', KEYS[1], 'rate');"
+              + "local interval = redis.call('hget', KEYS[1], 'interval');"
+              + "local type = redis.call('hget', KEYS[1], 'type');"
+              + "assert(rate ~= false and interval ~= false and type ~= false, 'RateLimiter is not initialized')"
+
+              + "local valueName = KEYS[2];"
+              + "if type == '1' then "
+                  + "valueName = KEYS[3];"
+              + "end;"
+
+              + "local currentValue = redis.call('get', valueName); "
+              + "if currentValue == false then "
+                     + "redis.call('set', valueName, rate, 'px', interval); "
+                     + "return rate; "
+              + "else "
+                     + "return currentValue; "
+              + "end;",
+                Arrays.asList(getName(), getValueName(), getClientValueName()));
+    }
+
+
 }

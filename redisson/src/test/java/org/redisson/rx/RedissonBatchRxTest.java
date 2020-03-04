@@ -14,10 +14,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
-import org.junit.Assert;
-import org.junit.Assume;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.*;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.redisson.BaseTest;
@@ -135,15 +132,15 @@ public class RedissonBatchRxTest extends BaseRxTest {
     public void testConnectionLeakAfterError() throws InterruptedException {
         Config config = BaseTest.createConfig();
         config.useSingleServer()
-                .setRetryInterval(1500)
-                .setTimeout(3000)
+                .setRetryInterval(100)
+                .setTimeout(200)
                 .setConnectionMinimumIdleSize(1).setConnectionPoolSize(1);
 
         RedissonRxClient redisson = Redisson.createRx(config);
         
         BatchOptions batchOptions = BatchOptions.defaults().executionMode(ExecutionMode.REDIS_WRITE_ATOMIC);
         RBatchRx batch = redisson.createBatch(batchOptions);
-        for (int i = 0; i < 300000; i++) {
+        for (int i = 0; i < 25000; i++) {
             batch.getBucket("test").set(123);
         }
         
@@ -171,7 +168,7 @@ public class RedissonBatchRxTest extends BaseRxTest {
     @Test
     public void testBigRequestAtomic() {
         batchOptions
-                    .atomic()
+                    .executionMode(ExecutionMode.IN_MEMORY_ATOMIC)
                     .responseTimeout(15, TimeUnit.SECONDS)
                     .retryInterval(1, TimeUnit.SECONDS)
                     .retryAttempts(5);
@@ -229,17 +226,17 @@ public class RedissonBatchRxTest extends BaseRxTest {
     @Test
     public void testWriteTimeout() throws InterruptedException {
         Config config = BaseTest.createConfig();
-        config.useSingleServer().setTimeout(3000);
+        config.useSingleServer().setRetryInterval(700).setTimeout(1500);
         RedissonRxClient redisson = Redisson.createRx(config);
 
         RBatchRx batch = redisson.createBatch(batchOptions);
         RMapCacheRx<String, String> map = batch.getMapCache("test");
-        int total = 200000;
+        int total = 10000;
         for (int i = 0; i < total; i++) {
             map.put("" + i, "" + i, 5, TimeUnit.MINUTES);
             if (batchOptions.getExecutionMode() == ExecutionMode.REDIS_WRITE_ATOMIC) {
                 if (i % 100 == 0) {
-                    Thread.sleep(5);
+                    Thread.sleep(10);
                 }
             }
         }
@@ -248,9 +245,9 @@ public class RedissonBatchRxTest extends BaseRxTest {
         sync(batch.execute());
         long executionTime = System.currentTimeMillis() - s;
         if (batchOptions.getExecutionMode() == ExecutionMode.IN_MEMORY) {
-            assertThat(executionTime).isLessThan(22000);
+            assertThat(executionTime).isLessThan(1000);
         } else {
-            assertThat(executionTime).isLessThan(3500);
+            assertThat(executionTime).isLessThan(300);
         }
         assertThat(sync(redisson.getMapCache("test").size())).isEqualTo(total);
         redisson.shutdown();
@@ -288,7 +285,7 @@ public class RedissonBatchRxTest extends BaseRxTest {
 
     @Test
     public void testAtomic() {
-        batchOptions.atomic();
+        batchOptions.executionMode(ExecutionMode.IN_MEMORY_ATOMIC);
         
         RBatchRx batch = redisson.createBatch(batchOptions);
         Single<Long> f1 = batch.getAtomicLong("A1").addAndGet(1);
@@ -328,7 +325,7 @@ public class RedissonBatchRxTest extends BaseRxTest {
         RedissonRxClient redisson = Redisson.createRx(config);
         
         batchOptions
-                                            .atomic()
+                                            .executionMode(ExecutionMode.IN_MEMORY_ATOMIC)
                                             .syncSlaves(1, 1, TimeUnit.SECONDS);
 
         RBatchRx batch = redisson.createBatch(batchOptions);
@@ -363,7 +360,7 @@ public class RedissonBatchRxTest extends BaseRxTest {
 
     @Test
     public void testDifferentCodecsAtomic() {
-        RBatchRx b = redisson.createBatch(batchOptions.atomic());
+        RBatchRx b = redisson.createBatch(batchOptions.executionMode(ExecutionMode.IN_MEMORY_ATOMIC));
         b.getMap("test1").put("1", "2");
         b.getMap("test2", StringCodec.INSTANCE).put("21", "3");
         Maybe<Object> val1 = b.getMap("test1").get("1");

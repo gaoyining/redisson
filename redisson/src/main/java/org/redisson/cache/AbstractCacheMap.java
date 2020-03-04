@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -178,8 +178,7 @@ public abstract class AbstractCacheMap<K, V> implements Cache<K, V> {
         return put(key, value, timeToLiveInMillis, TimeUnit.MILLISECONDS, maxIdleInMillis, TimeUnit.MILLISECONDS);
     }
     
-    @Override
-    public V put(K key, V value, long ttl, TimeUnit ttlUnit, long maxIdleTime, TimeUnit maxIdleUnit) {
+    private V put(K key, V value, long ttl, TimeUnit ttlUnit, long maxIdleTime, TimeUnit maxIdleUnit) {
         CachedValue<K, V> entry = create(key, value, ttlUnit.toMillis(ttl), maxIdleUnit.toMillis(maxIdleTime));
         if (isFull(key)) {
             if (!removeExpiredEntries()) {
@@ -205,6 +204,10 @@ public abstract class AbstractCacheMap<K, V> implements Cache<K, V> {
     }
 
     protected boolean removeExpiredEntries() {
+        if (timeToLiveInMillis == 0 && maxIdleInMillis == 0) {
+            return false;
+        }
+
         boolean removed = false;
         // TODO optimize
         for (CachedValue<K, V> value : map.values()) {

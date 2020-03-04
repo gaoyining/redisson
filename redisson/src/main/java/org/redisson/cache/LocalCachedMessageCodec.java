@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,7 +42,9 @@ public class LocalCachedMessageCodec extends BaseCodec {
         public Object decode(ByteBuf buf, State state) throws IOException {
             byte type = buf.readByte();
             if (type == 0x0) {
-                return new LocalCachedMapClear();
+                byte[] id = new byte[16];
+                buf.readBytes(id);
+                return new LocalCachedMapClear(id);
             }
             
             if (type == 0x1) {
@@ -116,8 +118,10 @@ public class LocalCachedMessageCodec extends BaseCodec {
         @Override
         public ByteBuf encode(Object in) throws IOException {
             if (in instanceof LocalCachedMapClear) {
+                LocalCachedMapClear li = (LocalCachedMapClear) in; 
                 ByteBuf result = ByteBufAllocator.DEFAULT.buffer(1);
                 result.writeByte(0x0);
+                result.writeBytes(li.getRequestId());
                 return result;
             }
             if (in instanceof LocalCachedMapInvalidate) {

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,18 +15,12 @@
  */
 package org.redisson.connection;
 
-import java.net.InetSocketAddress;
-import java.net.URI;
-import java.util.Collection;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.BiConsumer;
-
+import io.netty.channel.ChannelFuture;
 import org.redisson.api.NodeType;
 import org.redisson.api.RFuture;
 import org.redisson.client.RedisClient;
 import org.redisson.client.RedisConnection;
+import org.redisson.client.RedisException;
 import org.redisson.client.RedisPubSubConnection;
 import org.redisson.client.protocol.CommandData;
 import org.redisson.client.protocol.RedisCommand;
@@ -38,17 +32,16 @@ import org.redisson.connection.ClientConnectionsEntry.FreezeReason;
 import org.redisson.connection.balancer.LoadBalancerManager;
 import org.redisson.connection.pool.MasterConnectionPool;
 import org.redisson.connection.pool.MasterPubSubConnectionPool;
-import org.redisson.misc.CountableListener;
-import org.redisson.misc.RPromise;
-import org.redisson.misc.RedissonPromise;
-import org.redisson.misc.TransferListener;
-import org.redisson.misc.URIBuilder;
+import org.redisson.misc.*;
 import org.redisson.pubsub.PubSubConnectionEntry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelFutureListener;
+import java.net.InetSocketAddress;
+import java.util.Collection;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  *
@@ -92,28 +85,29 @@ public class MasterSlaveEntry {
         return config;
     }
 
-    public List<RFuture<Void>> initSlaveBalancer(Collection<URI> disconnectedNodes) {
+    public List<RFuture<Void>> initSlaveBalancer(Collection<RedisURI> disconnectedNodes) {
         boolean freezeMasterAsSlave = !config.getSlaveAddresses().isEmpty()
                     && !config.checkSkipSlavesInit()
                         && disconnectedNodes.size() < config.getSlaveAddresses().size();
 
         List<RFuture<Void>> result = new LinkedList<RFuture<Void>>();
-        RFuture<Void> f = addSlave(config.getMasterAddress(), freezeMasterAsSlave, NodeType.MASTER);
+        RFuture<Void> f = addSlave(new RedisURI(config.getMasterAddress()), freezeMasterAsSlave, NodeType.MASTER);
         result.add(f);
-        for (URI address : config.getSlaveAddresses()) {
-            f = addSlave(address, disconnectedNodes.contains(address), NodeType.SLAVE);
+        for (String address : config.getSlaveAddresses()) {
+            RedisURI uri = new RedisURI(address);
+            f = addSlave(uri, disconnectedNodes.contains(uri), NodeType.SLAVE);
             result.add(f);
         }
         return result;
     }
 
-    public RFuture<RedisClient> setupMasterEntry(InetSocketAddress address, URI uri) {
+    public RFuture<RedisClient> setupMasterEntry(InetSocketAddress address, RedisURI uri) {
         RedisClient client = connectionManager.createClient(NodeType.MASTER, address, uri, sslHostname);
         return setupMasterEntry(client);
     }
     
 
-    public RFuture<RedisClient> setupMasterEntry(URI address) {
+    public RFuture<RedisClient> setupMasterEntry(RedisURI address) {
         RedisClient client = connectionManager.createClient(NodeType.MASTER, address, sslHostname);
         return setupMasterEntry(client);
     }
@@ -173,7 +167,7 @@ public class MasterSlaveEntry {
         return slaveDown(entry);
     }
     
-    public boolean slaveDown(URI address, FreezeReason freezeReason) {
+    public boolean slaveDown(RedisURI address, FreezeReason freezeReason) {
         ClientConnectionsEntry entry = slaveBalancer.freeze(address, freezeReason);
         if (entry == null) {
             return false;
@@ -238,32 +232,20 @@ public class MasterSlaveEntry {
                 log.error("Can't resubscribe blocking queue " + commandData, e);
                 return;
             }
-            
-            AtomicBoolean skip = new AtomicBoolean();
-            BiConsumer<Object, Throwable> listener = new BiConsumer<Object, Throwable>() {
-                @Override
-                public void accept(Object t, Throwable u) {
-                    if (skip.get()) {
-                        return;
-                    }
-                    releaseWrite(newConnection);
-                }
-            };
-            commandData.getPromise().onComplete(listener);
+
             if (commandData.getPromise().isDone()) {
+                releaseWrite(newConnection);
                 return;
             }
+
             ChannelFuture channelFuture = newConnection.send(commandData);
-            channelFuture.addListener(new ChannelFutureListener() {
-                @Override
-                public void operationComplete(ChannelFuture future) throws Exception {
-                    if (!future.isSuccess()) {
-                        listener.accept(null, null);
-                        skip.set(true);
-                        releaseWrite(newConnection);
-                        log.error("Can't resubscribe blocking queue {}", commandData);
-                    }
+            channelFuture.addListener(future -> {
+                if (!future.isSuccess()) {
+                    commandData.getPromise().tryFailure(new RedisException("Can't resubscribe blocking queue " + commandData + " to " + newConnection));
                 }
+            });
+            commandData.getPromise().onComplete((r, ex) -> {
+                releaseWrite(newConnection);
             });
         });
     }
@@ -276,7 +258,7 @@ public class MasterSlaveEntry {
         return slaveBalancer.contains(addr);
     }
     
-    public boolean hasSlave(URI addr) {
+    public boolean hasSlave(RedisURI addr) {
         return slaveBalancer.contains(addr);
     }
 
@@ -284,11 +266,11 @@ public class MasterSlaveEntry {
         return slaveBalancer.getAvailableClients();
     }
 
-    public RFuture<Void> addSlave(URI address) {
+    public RFuture<Void> addSlave(RedisURI address) {
         return addSlave(address, false, NodeType.SLAVE);
     }
     
-    public RFuture<Void> addSlave(InetSocketAddress address, URI uri) {
+    public RFuture<Void> addSlave(InetSocketAddress address, RedisURI uri) {
         return addSlave(address, uri, false, NodeType.SLAVE);
     }
         
@@ -323,12 +305,12 @@ public class MasterSlaveEntry {
         return result;
     }
 
-    private RFuture<Void> addSlave(InetSocketAddress address, URI uri, boolean freezed, NodeType nodeType) {
+    private RFuture<Void> addSlave(InetSocketAddress address, RedisURI uri, boolean freezed, NodeType nodeType) {
         RedisClient client = connectionManager.createClient(NodeType.SLAVE, address, uri, sslHostname);
         return addSlave(client, freezed, nodeType);
     }
     
-    private RFuture<Void> addSlave(URI address, boolean freezed, NodeType nodeType) {
+    private RFuture<Void> addSlave(RedisURI address, boolean freezed, NodeType nodeType) {
         RedisClient client = connectionManager.createClient(nodeType, address, sslHostname);
         return addSlave(client, freezed, nodeType);
     }
@@ -361,11 +343,11 @@ public class MasterSlaveEntry {
         return true;
     }
     
-    public boolean isSlaveUnfreezed(URI address) {
+    public boolean isSlaveUnfreezed(RedisURI address) {
         return slaveBalancer.isUnfreezed(address);
     }
     
-    public boolean slaveUp(URI address, FreezeReason freezeReason) {
+    public boolean slaveUp(RedisURI address, FreezeReason freezeReason) {
         if (!slaveBalancer.unfreeze(address, freezeReason)) {
             return false;
         }
@@ -373,7 +355,7 @@ public class MasterSlaveEntry {
         InetSocketAddress addr = masterEntry.getClient().getAddr();
         // exclude master from slaves
         if (!config.checkSkipSlavesInit()
-                && !URIBuilder.compare(addr, address)) {
+                && !RedisURI.compare(addr, address)) {
             if (slaveDown(addr, FreezeReason.SYSTEM)) {
                 log.info("master {} excluded from slaves", addr);
             }
@@ -406,21 +388,21 @@ public class MasterSlaveEntry {
      * @param address of Redis
      * @return client 
      */
-    public RFuture<RedisClient> changeMaster(URI address) {
+    public RFuture<RedisClient> changeMaster(RedisURI address) {
         ClientConnectionsEntry oldMaster = masterEntry;
         RFuture<RedisClient> future = setupMasterEntry(address);
         changeMaster(address, oldMaster, future);
         return future;
     }
     
-    public void changeMaster(InetSocketAddress address, URI uri) {
+    public void changeMaster(InetSocketAddress address, RedisURI uri) {
         ClientConnectionsEntry oldMaster = masterEntry;
         RFuture<RedisClient> future = setupMasterEntry(address, uri);
         changeMaster(uri, oldMaster, future);
     }
 
 
-    private void changeMaster(URI address, ClientConnectionsEntry oldMaster,
+    private void changeMaster(RedisURI address, ClientConnectionsEntry oldMaster,
             RFuture<RedisClient> future) {
         future.onComplete((newMasterClient, e) -> {
             if (e != null) {
@@ -471,7 +453,7 @@ public class MasterSlaveEntry {
         return writeConnectionPool.get(command);
     }
 
-    public RFuture<RedisConnection> redirectedConnectionWriteOp(RedisCommand<?> command, URI addr) {
+    public RFuture<RedisConnection> redirectedConnectionWriteOp(RedisCommand<?> command, RedisURI addr) {
         return slaveBalancer.getConnection(command, addr);
     }
 
@@ -482,7 +464,7 @@ public class MasterSlaveEntry {
         return slaveBalancer.nextConnection(command);
     }
 
-    public RFuture<RedisConnection> connectionReadOp(RedisCommand<?> command, URI addr) {
+    public RFuture<RedisConnection> connectionReadOp(RedisCommand<?> command, RedisURI addr) {
         return slaveBalancer.getConnection(command, addr);
     }
     

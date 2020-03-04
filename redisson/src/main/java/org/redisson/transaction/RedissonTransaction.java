@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -252,7 +252,7 @@ public class RedissonTransaction implements RTransaction {
                 .responseTimeout(options.getResponseTimeout(), TimeUnit.MILLISECONDS)
                 .retryAttempts(options.getRetryAttempts())
                 .retryInterval(options.getRetryInterval(), TimeUnit.MILLISECONDS)
-                .atomic();
+                .executionMode(BatchOptions.ExecutionMode.IN_MEMORY_ATOMIC);
         return batchOptions;
     }
 

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -109,8 +109,6 @@ public class RedissonSortedSet<V> extends RedissonObject implements RSortedSet<V
         comparatorHolder = redisson.getBucket(getComparatorKeyName(), StringCodec.INSTANCE);
         lock = redisson.getLock("redisson_sortedset_lock:{" + getName() + "}");
         list = (RedissonList<V>) redisson.getList(getName());
-        
-        loadComparator();
     }
 
     public RedissonSortedSet(Codec codec, CommandExecutor commandExecutor, String name, Redisson redisson) {
@@ -120,8 +118,6 @@ public class RedissonSortedSet<V> extends RedissonObject implements RSortedSet<V
         comparatorHolder = redisson.getBucket(getComparatorKeyName(), StringCodec.INSTANCE);
         lock = redisson.getLock("redisson_sortedset_lock:{" + getName() + "}");
         list = (RedissonList<V>) redisson.getList(getName(), codec);
-
-        loadComparator();
     }
     
     @Override

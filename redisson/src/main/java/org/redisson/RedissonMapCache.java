@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 
 import org.redisson.api.MapOptions;
 import org.redisson.api.RFuture;
@@ -44,15 +45,13 @@ import org.redisson.client.protocol.RedisCommand;
 import org.redisson.client.protocol.RedisCommand.ValueType;
 import org.redisson.client.protocol.RedisCommands;
 import org.redisson.client.protocol.convertor.NumberConvertor;
-import org.redisson.client.protocol.decoder.ListMultiDecoder;
-import org.redisson.client.protocol.decoder.LongMultiDecoder;
+import org.redisson.client.protocol.decoder.ListMultiDecoder2;
 import org.redisson.client.protocol.decoder.MapCacheScanResult;
 import org.redisson.client.protocol.decoder.MapCacheScanResultReplayDecoder;
 import org.redisson.client.protocol.decoder.MapScanResult;
-import org.redisson.client.protocol.decoder.ObjectListDecoder;
 import org.redisson.client.protocol.decoder.ObjectMapDecoder;
+import org.redisson.codec.BaseEventCodec;
 import org.redisson.codec.MapCacheEventCodec;
-import org.redisson.codec.MapCacheEventCodec.OSType;
 import org.redisson.command.CommandAsyncExecutor;
 import org.redisson.connection.decoder.MapGetAllDecoder;
 import org.redisson.eviction.EvictionScheduler;
@@ -84,8 +83,8 @@ public class RedissonMapCache<K, V> extends RedissonMap<K, V> implements RMapCac
     private EvictionScheduler evictionScheduler;
     
     public RedissonMapCache(EvictionScheduler evictionScheduler, CommandAsyncExecutor commandExecutor,
-                            String name, RedissonClient redisson, MapOptions<K, V> options) {
-        super(commandExecutor, name, redisson, options);
+                            String name, RedissonClient redisson, MapOptions<K, V> options, WriteBehindService writeBehindService) {
+        super(commandExecutor, name, redisson, options, writeBehindService);
         if (evictionScheduler != null) {
             evictionScheduler.schedule(getName(), getTimeoutSetName(), getIdleSetName(), getExpiredChannelName(), getLastAccessTimeSetName());
         }
@@ -93,8 +92,8 @@ public class RedissonMapCache<K, V> extends RedissonMap<K, V> implements RMapCac
     }
 
     public RedissonMapCache(Codec codec, EvictionScheduler evictionScheduler, CommandAsyncExecutor commandExecutor,
-                            String name, RedissonClient redisson, MapOptions<K, V> options) {
-        super(codec, commandExecutor, name, redisson, options);
+                            String name, RedissonClient redisson, MapOptions<K, V> options, WriteBehindService writeBehindService) {
+        super(codec, commandExecutor, name, redisson, options, writeBehindService);
         if (evictionScheduler != null) {
             evictionScheduler.schedule(getName(), getTimeoutSetName(), getIdleSetName(), getExpiredChannelName(), getLastAccessTimeSetName());
         }
@@ -395,18 +394,8 @@ public class RedissonMapCache<K, V> extends RedissonMap<K, V> implements RMapCac
             return future;
         }
 
-        MapWriterTask<V> listener = new MapWriterTask<V>() {
-            @Override
-            protected void execute() {
-                options.getWriter().write(key, value);
-            }
-
-            @Override
-            protected boolean condition(V res) {
-                return res == null;
-            }
-        };
-        return mapWriterFuture(future, listener);
+        MapWriterTask.Add task = new MapWriterTask.Add(key, value);
+        return mapWriterFuture(future, task, r -> r == null);
     }
 
     @Override
@@ -636,12 +625,7 @@ public class RedissonMapCache<K, V> extends RedissonMap<K, V> implements RMapCac
             return future;
         }
 
-        MapWriterTask<Void> listener = new MapWriterTask<Void>() {
-            @Override
-            public void execute() {
-                options.getWriter().writeAll((Map<K, V>) map);
-            }
-        };
+        MapWriterTask listener = new MapWriterTask.Add(map);
         return mapWriterFuture(future, listener);
     }
 
@@ -765,13 +749,7 @@ public class RedissonMapCache<K, V> extends RedissonMap<K, V> implements RMapCac
             return future;
         }
 
-        MapWriterTask<Boolean> listener = new MapWriterTask<Boolean>() {
-            @Override
-            protected void execute() {
-                options.getWriter().write(key, value);
-            }
-        };
-        return mapWriterFuture(future, listener);
+        return mapWriterFuture(future, new MapWriterTask.Add(key, value));
     }
 
     protected RFuture<Boolean> fastPutOperationAsync(K key, V value, long ttl, TimeUnit ttlUnit, long maxIdleTime, TimeUnit maxIdleUnit) {
@@ -916,12 +894,7 @@ public class RedissonMapCache<K, V> extends RedissonMap<K, V> implements RMapCac
             return future;
         }
 
-        MapWriterTask<V> listener = new MapWriterTask<V>() {
-            @Override
-            protected void execute() {
-                options.getWriter().write(key, value);
-            }
-        };
+        MapWriterTask.Add listener = new MapWriterTask.Add(key, value);
         return mapWriterFuture(future, listener);
     }
 
@@ -1039,7 +1012,7 @@ public class RedissonMapCache<K, V> extends RedissonMap<K, V> implements RMapCac
                             + "return -1; "
                         + "end;"
                         + "if expireDate > tonumber(ARGV[1]) then "
-                            + "return ARGV[1] - expireDate; "
+                            + "return expireDate - ARGV[1]; "
                         + "else "
                             + "return -2; "
                         + "end; "
@@ -1256,7 +1229,9 @@ public class RedissonMapCache<K, V> extends RedissonMap<K, V> implements RMapCac
         params.add(count);
 
         RedisCommand<MapCacheScanResult<Object, Object>> command = new RedisCommand<MapCacheScanResult<Object, Object>>("EVAL",
-                new ListMultiDecoder(new LongMultiDecoder(), new ObjectMapDecoder(codec), new ObjectListDecoder(codec), new MapCacheScanResultReplayDecoder()), ValueType.MAP);
+                new ListMultiDecoder2(
+                        new MapCacheScanResultReplayDecoder(),
+                        new ObjectMapDecoder(codec, true)), ValueType.MAP);
         RFuture<MapCacheScanResult<Object, Object>> f = commandExecutor.evalReadAsync(client, name, codec, command,
                 "local result = {}; "
                 + "local idleKeys = {}; "
@@ -1600,17 +1575,8 @@ public class RedissonMapCache<K, V> extends RedissonMap<K, V> implements RMapCac
             return future;
         }
 
-        MapWriterTask<Boolean> listener = new MapWriterTask<Boolean>() {
-            @Override
-            protected void execute() {
-                options.getWriter().write(key, value);
-            }
-            @Override
-            protected boolean condition(Boolean res) {
-                return res;
-            }
-        };
-        return mapWriterFuture(future, listener);
+        MapWriterTask.Add listener = new MapWriterTask.Add(key, value);
+        return mapWriterFuture(future, listener, Function.identity());
     }
 
     @Override
@@ -1629,6 +1595,9 @@ public class RedissonMapCache<K, V> extends RedissonMap<K, V> implements RMapCac
             "local t, val = struct.unpack('dLc0', v); " +
             "if t ~= 0 then " +
             "    local expireIdle = redis.call('zscore', KEYS[3], ARGV[2]); " +
+            "    if tonumber(expireIdle) > tonumber(ARGV[1]) then " +
+            "        redis.call('zadd', KEYS[3], t + tonumber(ARGV[1]), ARGV[2]); " +
+            "    end ;" +
             "    if expireIdle ~= false then " +
             "        expireDate = math.min(expireDate, tonumber(expireIdle)) " +
             "    end; " +
@@ -1661,6 +1630,9 @@ public class RedissonMapCache<K, V> extends RedissonMap<K, V> implements RMapCac
                 "end; " +
                 "if t ~= 0 then " +
                 "    local expireIdle = redis.call('zscore', KEYS[3], ARGV[2]); " +
+                "    if tonumber(expireIdle) > tonumber(ARGV[1]) then " +
+                "        redis.call('zadd', KEYS[3], t + tonumber(ARGV[1]), ARGV[2]); " +
+                "    end ;" +
                 "    if expireIdle ~= false then " +
                 "        expireDate = math.min(expireDate, tonumber(expireIdle)) " +
                 "    end; " +
@@ -1692,6 +1664,9 @@ public class RedissonMapCache<K, V> extends RedissonMap<K, V> implements RMapCac
                 "end; " +
                 "if t ~= 0 then " +
                 "    local expireIdle = redis.call('zscore', KEYS[3], ARGV[2]); " +
+                "    if tonumber(expireIdle) > tonumber(ARGV[1]) then " +
+                "        redis.call('zadd', KEYS[3], t + tonumber(ARGV[1]), ARGV[2]); " +
+                "    end ;" +
                 "    if expireIdle ~= false then " +
                 "        expireDate = math.min(expireDate, tonumber(expireIdle)) " +
                 "    end; " +
@@ -1907,9 +1882,9 @@ public class RedissonMapCache<K, V> extends RedissonMap<K, V> implements RMapCac
             serverFuture.syncUninterruptibly();
             String os = serverFuture.getNow().get("os");
             if (os.contains("Windows")) {
-                osType = OSType.WINDOWS;
+                osType = BaseEventCodec.OSType.WINDOWS;
             } else if (os.contains("NONSTOP")) {
-                osType = OSType.HPNONSTOP;
+                osType = BaseEventCodec.OSType.HPNONSTOP;
             }
         }
 
@@ -1985,8 +1960,7 @@ public class RedissonMapCache<K, V> extends RedissonMap<K, V> implements RMapCac
     
     @Override
     public RFuture<Boolean> deleteAsync() {
-        return commandExecutor.writeAsync(getName(), RedisCommands.DEL_OBJECTS, 
-                getName(), getTimeoutSetName(), getIdleSetName(), getLastAccessTimeSetName(), getOptionsName());
+        return deleteAsync(getName(), getTimeoutSetName(), getIdleSetName(), getLastAccessTimeSetName(), getOptionsName());
     }
 
     @Override
@@ -2169,6 +2143,9 @@ public class RedissonMapCache<K, V> extends RedissonMap<K, V> implements RMapCac
     public void destroy() {
         if (evictionScheduler != null) {
             evictionScheduler.remove(getName());
+        }
+        if (writeBehindService != null) {
+            writeBehindService.stop(getName());
         }
     }
 }

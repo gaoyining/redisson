@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 import org.redisson.api.mapreduce.RCollectionMapReduce;
@@ -94,7 +95,32 @@ public interface RScoredSortedSet<V> extends RScoredSortedSetAsync<V>, Iterable<
      * @return the tail element
      */
     V takeLast();
-    
+
+    /**
+     * Subscribes on first elements appeared in this set.
+     * Continuously invokes {@link #takeFirstAsync()} method to get a new element.
+     *
+     * @param consumer - queue elements listener
+     * @return listenerId - id of listener
+     */
+    int subscribeOnFirstElements(Consumer<V> consumer);
+
+    /**
+     * Subscribes on last elements appeared in this set.
+     * Continuously invokes {@link #takeLastAsync()} method to get a new element.
+     *
+     * @param consumer - queue elements listener
+     * @return listenerId - id of listener
+     */
+    int subscribeOnLastElements(Consumer<V> consumer);
+
+    /**
+     * Un-subscribes defined listener.
+     *
+     * @param listenerId - id of listener
+     */
+    void unsubscribe(int listenerId);
+
     /**
      * Removes and returns the head element or {@code null} if this sorted set is empty.
      *

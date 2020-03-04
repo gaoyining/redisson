@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -57,17 +57,7 @@ import org.redisson.client.protocol.RedisStrictCommand;
 import org.redisson.client.protocol.convertor.BooleanReplayConvertor;
 import org.redisson.client.protocol.convertor.DoubleReplayConvertor;
 import org.redisson.client.protocol.convertor.VoidReplayConvertor;
-import org.redisson.client.protocol.decoder.CodecDecoder;
-import org.redisson.client.protocol.decoder.GeoDistanceDecoder;
-import org.redisson.client.protocol.decoder.ListMultiDecoder;
-import org.redisson.client.protocol.decoder.ListScanResult;
-import org.redisson.client.protocol.decoder.ListScanResultReplayDecoder;
-import org.redisson.client.protocol.decoder.LongMultiDecoder;
-import org.redisson.client.protocol.decoder.MapScanResult;
-import org.redisson.client.protocol.decoder.MultiDecoder;
-import org.redisson.client.protocol.decoder.ObjectListReplayDecoder;
-import org.redisson.client.protocol.decoder.ObjectSetReplayDecoder;
-import org.redisson.client.protocol.decoder.TimeLongObjectDecoder;
+import org.redisson.client.protocol.decoder.*;
 import org.redisson.command.CommandAsyncService;
 import org.redisson.command.CommandBatchService;
 import org.redisson.connection.MasterSlaveEntry;
@@ -609,13 +599,13 @@ public class RedissonConnection extends AbstractRedisConnection {
             }
         } else {
             if (option == null || option == SetOption.UPSERT) {
-                return write(key, StringCodec.INSTANCE, RedisCommands.SET, key, value, "PX", expiration.getExpirationTimeInMilliseconds());
+                return write(key, StringCodec.INSTANCE, SET, key, value, "PX", expiration.getExpirationTimeInMilliseconds());
             }
             if (option == SetOption.SET_IF_ABSENT) {
-                return write(key, StringCodec.INSTANCE, RedisCommands.SET, key, value, "PX", expiration.getExpirationTimeInMilliseconds(), "NX");
+                return write(key, StringCodec.INSTANCE, SET, key, value, "PX", expiration.getExpirationTimeInMilliseconds(), "NX");
             }
             if (option == SetOption.SET_IF_PRESENT) {
-                return write(key, StringCodec.INSTANCE, RedisCommands.SET, key, value, "PX", expiration.getExpirationTimeInMilliseconds(), "XX");
+                return write(key, StringCodec.INSTANCE, SET, key, value, "PX", expiration.getExpirationTimeInMilliseconds(), "XX");
             }
         }
         throw new IllegalArgumentException();
@@ -1095,8 +1085,9 @@ public class RedissonConnection extends AbstractRedisConnection {
         if (score instanceof Double) {
             if (Double.isInfinite((Double) score)) {
                 element.append((Double)score > 0 ? "+inf" : "-inf");
+            } else {
+                element.append(BigDecimal.valueOf((Double)score).toPlainString());
             }
-            element.append(BigDecimal.valueOf((Double)score).toPlainString());
         } else {
             element.append(score);
         }
@@ -1336,8 +1327,8 @@ public class RedissonConnection extends AbstractRedisConnection {
         return write(destKey, StringCodec.INSTANCE, ZINTERSTORE, args.toArray());
     }
 
-    private static final RedisCommand<ListScanResult<Object>> ZSCAN = new RedisCommand<ListScanResult<Object>>("ZSCAN", new ListMultiDecoder(new LongMultiDecoder(), new ScoredSortedListReplayDecoder(), new ListScanResultReplayDecoder()));
-    
+    private static final RedisCommand<ListScanResult<Object>> ZSCAN = new RedisCommand<>("ZSCAN", new ListMultiDecoder2(new ListScanResultReplayDecoder(), new ScoredSortedListReplayDecoder()));
+
     @Override
     public Cursor<Tuple> zScan(byte[] key, ScanOptions options) {
         return new KeyBoundCursor<Tuple>(key, 0, options) {
@@ -2050,7 +2041,7 @@ public class RedissonConnection extends AbstractRedisConnection {
         return read(key, StringCodec.INSTANCE, GEOHASH, params.toArray());
     }
 
-    private final MultiDecoder<Map<Object, Object>> geoDecoder = new ListMultiDecoder(new PointDecoder(), new ObjectListReplayDecoder2(ListMultiDecoder.RESET));
+    private final MultiDecoder<Map<Object, Object>> geoDecoder = new ListMultiDecoder2(new ObjectListReplayDecoder2(), new PointDecoder());
 
     @Override
     public List<Point> geoPos(byte[] key, byte[]... members) {
@@ -2066,7 +2057,7 @@ public class RedissonConnection extends AbstractRedisConnection {
         return BigDecimal.valueOf(longitude).toPlainString();
     }
 
-    private final MultiDecoder<GeoResults<GeoLocation<byte[]>>> postitionDecoder = new ListMultiDecoder(new CodecDecoder(), new PointDecoder(), new ObjectListReplayDecoder(ListMultiDecoder.RESET), new GeoResultsDecoder());
+    private final MultiDecoder<GeoResults<GeoLocation<byte[]>>> postitionDecoder = new ListMultiDecoder2(new GeoResultsDecoder(), new CodecDecoder(), new PointDecoder(), new ObjectListReplayDecoder());
     
     @Override
     public GeoResults<GeoLocation<byte[]>> geoRadius(byte[] key, Circle within) {
@@ -2090,7 +2081,7 @@ public class RedissonConnection extends AbstractRedisConnection {
             command = new RedisCommand<GeoResults<GeoLocation<byte[]>>>("GEORADIUS", postitionDecoder);
             params.add("WITHCOORD");
         } else {
-            MultiDecoder<GeoResults<GeoLocation<byte[]>>> distanceDecoder = new ListMultiDecoder(new GeoDistanceDecoder(), new GeoResultsDecoder(within.getRadius().getMetric()));
+            MultiDecoder<GeoResults<GeoLocation<byte[]>>> distanceDecoder = new ListMultiDecoder2(new GeoResultsDecoder(within.getRadius().getMetric()), new GeoDistanceDecoder());
             command = new RedisCommand<GeoResults<GeoLocation<byte[]>>>("GEORADIUS", distanceDecoder);
             params.add("WITHDIST");
         }
@@ -2132,7 +2123,7 @@ public class RedissonConnection extends AbstractRedisConnection {
             command = new RedisCommand<GeoResults<GeoLocation<byte[]>>>("GEORADIUSBYMEMBER", postitionDecoder);
             params.add("WITHCOORD");
         } else {
-            MultiDecoder<GeoResults<GeoLocation<byte[]>>> distanceDecoder = new ListMultiDecoder(new GeoDistanceDecoder(), new GeoResultsDecoder(radius.getMetric()));
+            MultiDecoder<GeoResults<GeoLocation<byte[]>>> distanceDecoder = new ListMultiDecoder2(new GeoResultsDecoder(radius.getMetric()), new GeoDistanceDecoder());
             command = new RedisCommand<GeoResults<GeoLocation<byte[]>>>("GEORADIUSBYMEMBER", distanceDecoder);
             params.add("WITHDIST");
         }

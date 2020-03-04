@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -66,10 +66,6 @@ abstract class PublishSubscribe<E extends PubSubEntry<E>> {
 
     }
 
-    public E getEntry(String entryName) {
-        return entries.get(entryName);
-    }
-
     public RFuture<E> subscribe(String entryName, String channelName) {
         AtomicReference<Runnable> listenerHolder = new AtomicReference<Runnable>();
         AsyncSemaphore semaphore = service.getSemaphore(new ChannelName(channelName));
@@ -86,18 +82,18 @@ abstract class PublishSubscribe<E extends PubSubEntry<E>> {
             public void run() {
                 E entry = entries.get(entryName);
                 if (entry != null) {
-                    entry.aquire();
+                    entry.acquire();
                     semaphore.release();
                     entry.getPromise().onComplete(new TransferListener<E>(newPromise));
                     return;
                 }
                 
                 E value = createEntry(newPromise);
-                value.aquire();
+                value.acquire();
                 
                 E oldValue = entries.putIfAbsent(entryName, value);
                 if (oldValue != null) {
-                    oldValue.aquire();
+                    oldValue.acquire();
                     semaphore.release();
                     oldValue.getPromise().onComplete(new TransferListener<E>(newPromise));
                     return;

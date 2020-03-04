@@ -3,6 +3,7 @@ package org.redisson.hibernate;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Arrays;
+import java.util.function.Consumer;
 
 import org.hibernate.Query;
 import org.hibernate.Session;
@@ -25,6 +26,15 @@ public class TransactionalTest extends BaseCoreFunctionalTestCase {
     @Override
     protected Class<?>[] getAnnotatedClasses() {
         return new Class[] { ItemTransactional.class};
+    }
+
+    @Override
+    protected void buildSessionFactory(Consumer<Configuration> configurationAdapter) {
+        try {
+            super.buildSessionFactory(configurationAdapter);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     @Override

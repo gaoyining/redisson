@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,14 +42,9 @@ public class RxProxyBuilder {
             @Override
             public Object execute(Method mm, Object instance, Method instanceMethod, Object[] args) {
                 Flowable<Object> flowable = commandExecutor.flowable(new Callable<RFuture<Object>>() {
-                    @SuppressWarnings("unchecked")
                     @Override
-                    public RFuture<Object> call() {
-                        try {
-                            return (RFuture<Object>) mm.invoke(instance, args);
-                        } catch (Exception e) {
-                            throw new IllegalStateException(e);
-                        }
+                    public RFuture<Object> call() throws Exception {
+                        return (RFuture<Object>) mm.invoke(instance, args);
                     }
                 });
                 

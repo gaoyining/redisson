@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,11 +16,11 @@
 package org.redisson.client;
 
 import java.net.InetSocketAddress;
-import java.net.URI;
+import java.net.URL;
 import java.util.concurrent.ExecutorService;
 
 import org.redisson.config.SslProvider;
-import org.redisson.misc.URIBuilder;
+import org.redisson.misc.RedisURI;
 
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
@@ -35,7 +35,7 @@ import io.netty.util.Timer;
  */
 public class RedisClientConfig {
 
-    private URI address;
+    private RedisURI address;
     private InetSocketAddress addr;
     
     private Timer timer;
@@ -59,9 +59,9 @@ public class RedisClientConfig {
     private String sslHostname;
     private boolean sslEnableEndpointIdentification = true;
     private SslProvider sslProvider = SslProvider.JDK;
-    private URI sslTruststore;
+    private URL sslTruststore;
     private String sslTruststorePassword;
-    private URI sslKeystore;
+    private URL sslKeystore;
     private String sslKeystorePassword;
     
     public RedisClientConfig() {
@@ -105,23 +105,23 @@ public class RedisClientConfig {
     }
 
     public RedisClientConfig setAddress(String host, int port) {
-        this.address = URIBuilder.create("redis://" + host + ":" + port);
+        this.address = new RedisURI("redis://" + host + ":" + port);
         return this;
     }
     public RedisClientConfig setAddress(String address) {
-        this.address = URIBuilder.create(address);
+        this.address = new RedisURI(address);
         return this;
     }
-    public RedisClientConfig setAddress(InetSocketAddress addr, URI address) {
+    public RedisClientConfig setAddress(InetSocketAddress addr, RedisURI address) {
         this.addr = addr;
         this.address = address;
         return this;
     }
-    public RedisClientConfig setAddress(URI address) {
+    public RedisClientConfig setAddress(RedisURI address) {
         this.address = address;
         return this;
     }
-    public URI getAddress() {
+    public RedisURI getAddress() {
         return address;
     }
     public InetSocketAddress getAddr() {
@@ -184,18 +184,18 @@ public class RedisClientConfig {
         return this;
     }
     
-    public URI getSslTruststore() {
+    public URL getSslTruststore() {
         return sslTruststore;
     }
-    public RedisClientConfig setSslTruststore(URI sslTruststore) {
+    public RedisClientConfig setSslTruststore(URL sslTruststore) {
         this.sslTruststore = sslTruststore;
         return this;
     }
     
-    public URI getSslKeystore() {
+    public URL getSslKeystore() {
         return sslKeystore;
     }
-    public RedisClientConfig setSslKeystore(URI sslKeystore) {
+    public RedisClientConfig setSslKeystore(URL sslKeystore) {
         this.sslKeystore = sslKeystore;
         return this;
     }

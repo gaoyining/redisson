@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package org.redisson.api;
 import java.util.concurrent.TimeUnit;
 
 /**
+ * Asynchronous interface for Redis based Rate Limiter object.
  * 
  * @author Nikita Koksharov
  *
@@ -148,5 +149,12 @@ public interface RRateLimiterAsync extends RObjectAsync {
      * @return config object
      */
     RFuture<RateLimiterConfig> getConfigAsync();
-    
+
+    /**
+     * Returns amount of available permits.
+     *
+     * @return number of permits
+     */
+    RFuture<Long> availablePermitsAsync();
+
 }

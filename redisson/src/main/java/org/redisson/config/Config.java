@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,7 +28,6 @@ import org.redisson.connection.AddressResolverGroupFactory;
 import org.redisson.connection.ConnectionManager;
 import org.redisson.connection.DnsAddressResolverGroupFactory;
 import org.redisson.connection.ReplicatedConnectionManager;
-import org.redisson.misc.URIBuilder;
 
 import io.netty.channel.EventLoopGroup;
 
@@ -60,7 +59,7 @@ public class Config {
     private int nettyThreads = 32;
 
     /**
-     * Redis key/value codec. JsonJacksonCodec used by default
+     * Redis key/value codec. FST codec is used by default
      */
     private Codec codec;
 
@@ -85,7 +84,10 @@ public class Config {
     private boolean useScriptCache = false;
 
     private int minCleanUpDelay = 5;
+
     private int maxCleanUpDelay = 30*60;
+
+    private int cleanUpKeysAmount = 100;
     
     /**
      * AddressResolverGroupFactory switch between default and round robin
@@ -93,10 +95,6 @@ public class Config {
     private AddressResolverGroupFactory addressResolverGroupFactory = new DnsAddressResolverGroupFactory();
 
     public Config() {
-    }
-
-    static {
-        URIBuilder.patchUriObject();
     }
 
     public Config(Config oldConf) {
@@ -109,6 +107,7 @@ public class Config {
 
         setMinCleanUpDelay(oldConf.getMinCleanUpDelay());
         setMaxCleanUpDelay(oldConf.getMaxCleanUpDelay());
+        setCleanUpKeysAmount(oldConf.getCleanUpKeysAmount());
         setDecodeInExecutor(oldConf.isDecodeInExecutor());
         setUseScriptCache(oldConf.isUseScriptCache());
         setKeepPubSubOrder(oldConf.isKeepPubSubOrder());
@@ -143,7 +142,7 @@ public class Config {
     }
 
     /**
-     * Redis key/value codec. Default is json-codec
+     * Redis key/value codec. Default is FST codec
      *
      * @see org.redisson.client.codec.Codec
      * 
@@ -546,84 +545,42 @@ public class Config {
         return addressResolverGroupFactory;
     }
 
-    /**
-     * Read config object stored in JSON format from <code>String</code>
-     *
-     * @param content of config
-     * @return config
-     * @throws IOException error
-     */
+    @Deprecated
     public static Config fromJSON(String content) throws IOException {
         ConfigSupport support = new ConfigSupport();
         return support.fromJSON(content, Config.class);
     }
 
-    /**
-     * Read config object stored in JSON format from <code>InputStream</code>
-     *
-     * @param inputStream object
-     * @return config
-     * @throws IOException error
-     */
+    @Deprecated
     public static Config fromJSON(InputStream inputStream) throws IOException {
         ConfigSupport support = new ConfigSupport();
         return support.fromJSON(inputStream, Config.class);
     }
 
-    /**
-     * Read config object stored in JSON format from <code>File</code>
-     *
-     * @param file object
-     * @param classLoader class loader 
-     * @return config
-     * @throws IOException error
-     */
+    @Deprecated
     public static Config fromJSON(File file, ClassLoader classLoader) throws IOException {
         ConfigSupport support = new ConfigSupport();
         return support.fromJSON(file, Config.class, classLoader);
     }
 
-    /**
-     * Read config object stored in JSON format from <code>File</code>
-     *
-     * @param file object
-     * @return config
-     * @throws IOException error
-     */
+    @Deprecated
     public static Config fromJSON(File file) throws IOException {
         return fromJSON(file, null);
     }
 
-    /**
-     * Read config object stored in JSON format from <code>URL</code>
-     *
-     * @param url object
-     * @return config
-     * @throws IOException error
-     */
+    @Deprecated
     public static Config fromJSON(URL url) throws IOException {
         ConfigSupport support = new ConfigSupport();
         return support.fromJSON(url, Config.class);
     }
 
-    /**
-     * Read config object stored in JSON format from <code>Reader</code>
-     *
-     * @param reader object
-     * @return config
-     * @throws IOException error
-     */
+    @Deprecated
     public static Config fromJSON(Reader reader) throws IOException {
         ConfigSupport support = new ConfigSupport();
         return support.fromJSON(reader, Config.class);
     }
 
-    /**
-     * Convert current configuration to JSON format
-     *
-     * @return config in json format
-     * @throws IOException error
-     */
+    @Deprecated
     public String toJSON() throws IOException {
         ConfigSupport support = new ConfigSupport();
         return support.toJSON(this);
@@ -749,9 +706,11 @@ public class Config {
     }
     
     /**
-     * Defines minimal delay of clean up process for expired entries.
+     * Defines minimum delay in seconds for clean up process of expired entries.
      * <p>
-     * Used in JCache, RSetCache, RMapCache, RListMultimapCache, RSetMultimapCache objects
+     * Applied to JCache, RSetCache, RMapCache, RListMultimapCache, RSetMultimapCache objects.
+     * <p>
+     * Default is <code>5</code>.
      * 
      * @param minCleanUpDelay - delay in seconds
      * @return config
@@ -766,10 +725,12 @@ public class Config {
     }
     
     /**
-     * Defines maximal delay of clean up process for expired entries.
+     * Defines maximum delay in seconds for clean up process of expired entries.
      * <p>
-     * Used in JCache, RSetCache, RMapCache, RListMultimapCache, RSetMultimapCache objects
-     * 
+     * Applied to JCache, RSetCache, RMapCache, RListMultimapCache, RSetMultimapCache objects.
+     * <p>
+     * Default is <code>1800</code>.
+     *
      * @param maxCleanUpDelay - delay in seconds
      * @return config
      */
@@ -778,6 +739,23 @@ public class Config {
         return this;
     }
 
-    
-    
+    public int getCleanUpKeysAmount() {
+        return cleanUpKeysAmount;
+    }
+
+    /**
+     * Defines expired keys amount deleted per single operation during clean up process of expired entries.
+     * <p>
+     * Applied to JCache, RSetCache, RMapCache, RListMultimapCache, RSetMultimapCache objects.
+     * <p>
+     * Default is <code>100</code>.
+     *
+     * @param cleanUpKeysAmount - delay in seconds
+     * @return config
+     */
+    public Config setCleanUpKeysAmount(int cleanUpKeysAmount) {
+        this.cleanUpKeysAmount = cleanUpKeysAmount;
+        return this;
+    }
+
 }

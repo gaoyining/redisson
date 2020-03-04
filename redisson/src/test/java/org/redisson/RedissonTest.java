@@ -36,6 +36,8 @@ import org.redisson.api.Node;
 import org.redisson.api.Node.InfoSection;
 import org.redisson.api.NodeType;
 import org.redisson.api.NodesGroup;
+import org.redisson.api.RBucket;
+import org.redisson.api.RBuckets;
 import org.redisson.api.RFuture;
 import org.redisson.api.RLock;
 import org.redisson.api.RMap;
@@ -55,6 +57,7 @@ import org.redisson.client.protocol.RedisCommands;
 import org.redisson.client.protocol.Time;
 import org.redisson.cluster.ClusterNodeInfo;
 import org.redisson.cluster.ClusterNodeInfo.Flag;
+import org.redisson.codec.FstCodec;
 import org.redisson.codec.JsonJacksonCodec;
 import org.redisson.codec.SerializationCodec;
 import org.redisson.config.Config;
@@ -189,6 +192,46 @@ public class RedissonTest {
     
     public static class Dummy {
         private String field;
+    }
+    
+    @Test
+    public void testNextResponseAfterDecoderError() throws Exception {
+        Config config = new Config();
+        config.useSingleServer()
+                .setConnectionMinimumIdleSize(1)
+                .setConnectionPoolSize(1)
+              .setAddress(RedisRunner.getDefaultRedisServerBindAddressAndPort());
+
+        RedissonClient redisson = Redisson.create(config);
+        
+        setJSONValue(redisson, "test1", "test1");
+        setStringValue(redisson, "test2", "test2");
+        setJSONValue(redisson, "test3", "test3");
+        try {
+            RBuckets buckets = redisson.getBuckets(new JsonJacksonCodec());
+            buckets.get("test2", "test1");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        assertThat(getStringValue(redisson, "test3")).isEqualTo("\"test3\"");
+        
+        redisson.shutdown();
+    }
+
+    public void setJSONValue(RedissonClient redisson, String key, Object t) {
+        RBucket<Object> test1 = redisson.getBucket(key, new JsonJacksonCodec());
+        test1.set(t);
+    }
+
+    public void setStringValue(RedissonClient redisson, String key, Object t) {
+        RBucket<Object> test1 = redisson.getBucket(key, new StringCodec());
+        test1.set(t);
+    }
+
+
+    public Object getStringValue(RedissonClient redisson, String key) {
+        RBucket<Object> test1 = redisson.getBucket(key, new StringCodec());
+        return test1.get();
     }
 
     @Test(expected = IllegalArgumentException.class)
@@ -901,7 +944,7 @@ public class RedissonTest {
     }
 
     @Test
-    public void testClusterConfig() throws IOException {
+    public void testClusterConfigJSON() throws IOException {
         Config originalConfig = new Config();
         originalConfig.useClusterServers().addNodeAddress("redis://123.123.1.23:1902", "redis://9.3.1.0:1902");
         String t = originalConfig.toJSON();
@@ -925,6 +968,15 @@ public class RedissonTest {
         assertThat(c.toYAML()).isEqualTo(t);
     }
 
+    @Test
+    public void testSentinelYAML() throws IOException {
+        Config c2 = new Config();
+        c2.useSentinelServers().addSentinelAddress("redis://123.1.1.1:1231").setMasterName("mymaster");
+        String t = c2.toYAML();
+        System.out.println(t);
+        Config c = Config.fromYAML(t);
+        assertThat(c.toYAML()).isEqualTo(t);
+    }
 
     @Test
     public void testMasterSlaveConfigJSON() throws IOException {
@@ -938,7 +990,7 @@ public class RedissonTest {
     @Test
     public void testMasterSlaveConfigYAML() throws IOException {
         Config c2 = new Config();
-        c2.useMasterSlaveServers().setMasterAddress("redis://123.1.1.1:1231").addSlaveAddress("redis://82.12.47.12:1028");
+        c2.useMasterSlaveServers().setMasterAddress("redis://123.1.1.1:1231").addSlaveAddress("redis://82.12.47.12:1028", "redis://82.12.47.14:1028");
         String t = c2.toYAML();
         Config c = Config.fromYAML(t);
         assertThat(c.toYAML()).isEqualTo(t);

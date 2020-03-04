@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@
  */
 package org.redisson.api;
 
-import java.util.Collection;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
@@ -263,12 +262,6 @@ public interface RKeys extends RKeysAsync {
      */
     String randomKey();
 
-    /*
-     * Use getKeysByPattern method instead
-     */
-    @Deprecated
-    Collection<String> findKeysByPattern(String pattern);
-
     /**
      * Delete multiple objects by a key pattern.
      * <p>
@@ -317,6 +310,11 @@ public interface RKeys extends RKeysAsync {
      * @return count of keys
      */
     long count();
+
+    /**
+     * Swap two databases.
+     */
+    void swapdb(int db1, int db2);
 
     /**
      * Delete all keys of currently selected database

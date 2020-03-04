@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,13 +15,13 @@
  */
 package org.redisson.api;
 
-import java.util.concurrent.TimeUnit;
-
 import io.reactivex.Completable;
 import io.reactivex.Single;
 
+import java.util.concurrent.TimeUnit;
+
 /**
- * RxJava2 interface for Rate Limiter object
+ * Reactive interface for Redis based Rate Limiter object.
  * 
  * @author Nikita Koksharov
  *
@@ -145,5 +145,12 @@ public interface RRateLimiterRx extends RObjectRx {
      *         if the waiting time elapsed before a permit was acquired
      */
     Single<Boolean> tryAcquire(long permits, long timeout, TimeUnit unit);
-    
+
+    /**
+     * Returns amount of available permits.
+     *
+     * @return number of permits
+     */
+    Single<Long> availablePermits();
+
 }

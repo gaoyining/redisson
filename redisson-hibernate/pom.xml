@@ -4,18 +4,16 @@
     <parent>
         <groupId>org.redisson</groupId>
         <artifactId>redisson-parent</artifactId>
-        <version>3.10.6-SNAPSHOT</version>
+        <version>3.12.4-SNAPSHOT</version>
         <relativePath>../</relativePath>
     </parent>
 
     <artifactId>redisson-hibernate</artifactId>
     <packaging>pom</packaging>
 
-    <name>Redisson/Hibernate</name>
+    <name>Redisson/Hibernate cache</name>
 
     <modules>
-        <module>redisson-hibernate-4</module>
-        <module>redisson-hibernate-5</module>
         <module>redisson-hibernate-52</module>
         <module>redisson-hibernate-53</module>
     </modules>
@@ -55,7 +53,7 @@
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
-            <version>1.4.192</version>
+            <version>1.4.200</version>
             <scope>test</scope>
         </dependency>
 

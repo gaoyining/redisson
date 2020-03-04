@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -62,12 +62,13 @@ public class TransactionalSetCache<V> extends BaseTransactionalSet<V> {
     }
     
     public RFuture<Boolean> addAsync(V value, long ttl, TimeUnit ttlUnit) {
-        return addAsync(value, new AddCacheOperation(set, value, ttl, ttlUnit, transactionId));
+        long threadId = Thread.currentThread().getId();
+        return addAsync(value, new AddCacheOperation(set, value, ttl, ttlUnit, transactionId, threadId));
     }
     
     @Override
-    protected TransactionalOperation createAddOperation(V value) {
-        return new AddCacheOperation(set, value, transactionId);
+    protected TransactionalOperation createAddOperation(V value, long threadId) {
+        return new AddCacheOperation(set, value, transactionId, threadId);
     }
     
     @Override
@@ -76,8 +77,8 @@ public class TransactionalSetCache<V> extends BaseTransactionalSet<V> {
     }
     
     @Override
-    protected TransactionalOperation createRemoveOperation(Object value) {
-        return new RemoveCacheOperation(set, value, transactionId);
+    protected TransactionalOperation createRemoveOperation(Object value, long threadId) {
+        return new RemoveCacheOperation(set, value, transactionId, threadId);
     }
 
     @Override

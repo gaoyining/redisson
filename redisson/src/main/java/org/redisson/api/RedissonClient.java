@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-2019 Nikita Koksharov
+ * Copyright (c) 2013-2020 Nikita Koksharov
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -612,7 +612,27 @@ public interface RedissonClient {
      * @return queue object
      */
     <V> RQueue<V> getQueue(String name);
-    
+
+    /**
+     * Returns transfer queue instance by name.
+     *
+     * @param <V> type of values
+     * @param name - name of object
+     * @return TransferQueue object
+     */
+    <V> RTransferQueue<V> getTransferQueue(String name);
+
+    /**
+     * Returns transfer queue instance by name
+     * using provided codec for queue objects.
+     *
+     * @param <V> type of values
+     * @param name - name of object
+     * @param codec - code for values
+     * @return TransferQueue object
+     */
+    <V> RTransferQueue<V> getTransferQueue(String name, Codec codec);
+
     /**
      * Returns unbounded delayed queue instance by name.
      * <p>
@@ -635,6 +655,25 @@ public interface RedissonClient {
      * @return Queue object
      */
     <V> RQueue<V> getQueue(String name, Codec codec);
+    
+    /**
+     * Returns RingBuffer based queue.
+     * 
+     * @param <V> value type
+     * @param name - name of object
+     * @return RingBuffer object
+     */
+    <V> RRingBuffer<V> getRingBuffer(String name);
+    
+    /**
+     * Returns RingBuffer based queue.
+     * 
+     * @param <V> value type
+     * @param name - name of object
+     * @param codec - codec for values
+     * @return RingBuffer object
+     */
+    <V> RRingBuffer<V> getRingBuffer(String name, Codec codec);
 
     /**
      * Returns priority unbounded queue instance by name.
@@ -1079,5 +1118,12 @@ public interface RedissonClient {
      * or was shutdown {@link #isShutdown()} already.
      */
     boolean isShuttingDown();
+
+    /**
+     * Returns id of this Redisson instance
+     * 
+     * @return id
+     */
+    String getId();
 
 }
