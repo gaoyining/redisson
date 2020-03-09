@@ -21,7 +21,8 @@ import java.util.function.BiConsumer;
 
 /**
  * Represents the result of an asynchronous computation
- * 
+ * 表示异步计算的结果
+ *
  * @author Nikita Koksharov
  *
  * @param <V> type of value

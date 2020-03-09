@@ -452,7 +452,7 @@ public interface RedissonClient {
 
     /**
      * Returns MultiLock instance associated with specified <code>locks</code>
-     * 
+     *
      * @param locks - collection of locks
      * @return MultiLock object
      */

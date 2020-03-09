@@ -54,7 +54,7 @@ public interface RLock extends Lock, RLockAsync {
      *
      * Lock will be released automatically after defined <code>leaseTime</code> interval.
      *
-     * @param waitTime the maximum time to acquire the lock
+     * @param waitTime the maximum time to acquire the lock 获取锁的最长时间
      * @param leaseTime lease time
      * @param unit time unit
      * @return <code>true</code> if lock is successfully acquired,

@@ -53,6 +53,12 @@ import io.netty.util.TimerTask;
  * <p>
  * Implements a <b>non-fair</b> locking so doesn't guarantees an acquire order.
  *
+* {@link java.util.concurrent.locks.Lock}的分布式实现
+ *实现可重入锁定。<br>
+ *如果客户端断开连接，锁将自动删除。
+ * <p>
+ *实现<b>不公平</ b>锁定，因此不能保证获得订单。
+ *
  * @author Nikita Koksharov
  *
  */
@@ -372,10 +378,12 @@ public class RedissonLock extends RedissonExpirable implements RLock {
         long threadId = Thread.currentThread().getId();
         Long ttl = tryAcquire(leaseTime, unit, threadId);
         // lock acquired
+        // 获得锁
         if (ttl == null) {
             return true;
         }
-        
+
+        // 等待的时间已经大于锁的时间 ，返回false
         time -= System.currentTimeMillis() - current;
         if (time <= 0) {
             acquireFailed(threadId);

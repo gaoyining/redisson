@@ -35,6 +35,11 @@ import org.redisson.pubsub.LockPubSub;
  * <p>
  * Implements a <b>fair</b> locking so it guarantees an acquire order by threads.
  *
+* {@link java.util.concurrent.locks.Lock}的分布式实现
+ *实现可重入锁定。<br>
+ *如果客户端断开连接，锁将自动删除。
+ * <p>
+ *实现<b> fair </ b>锁定，因此可以保证线程获得订单。 *
  * @author Nikita Koksharov
  *
  */
@@ -73,20 +78,25 @@ public class RedissonFairLock extends RedissonLock implements RLock {
     protected RFuture<Void> acquireFailedAsync(long threadId) {
         return commandExecutor.evalWriteAsync(getName(), LongCodec.INSTANCE, RedisCommands.EVAL_VOID,
                 // get the existing timeout for the thread to remove
+                // 获取线程删除的现有超时
                 "local queue = redis.call('lrange', KEYS[1], 0, -1);" +
                 // find the location in the queue where the thread is
+                // 在队列中找到线程所在的位置
                 "local i = 1;" +
                 "while i <= #queue and queue[i] ~= ARGV[1] do " +
                     "i = i + 1;" +
                 "end;" +
                 // go to the next index which will exist after the current thread is removed
+                // 转到删除当前线程后将存在的下一个索引
                 "i = i + 1;" +
                 // decrement the timeout for the rest of the queue after the thread being removed
+                // 删除线程后减少其余队列的超时
                 "while i <= #queue do " +
                     "redis.call('zincrby', KEYS[2], -tonumber(ARGV[2]), queue[i]);" +
                     "i = i + 1;" +
                 "end;" +
                 // remove the thread from the queue and timeouts set
+                // 从队列和超时集中删除线程
                 "redis.call('zrem', KEYS[2], ARGV[1]);" +
                 "redis.call('lrem', KEYS[1], 0, ARGV[1]);",
                 Arrays.<Object>asList(threadsQueueName, timeoutSetName),
