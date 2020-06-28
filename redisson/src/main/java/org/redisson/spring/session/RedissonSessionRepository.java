@@ -205,7 +205,7 @@ public class RedissonSessionRepository implements FindByIndexNameSessionReposito
             RBatch batch = redisson.createBatch(BatchOptions.defaults());
             batch.getBucket(getExpiredKey(oldId)).remainTimeToLiveAsync();
             batch.getBucket(getExpiredKey(oldId)).deleteAsync();
-            batch.getMap(map.getName()).readAllMapAsync();
+            batch.getMap(map.getName(), map.getCodec()).readAllMapAsync();
             batch.getMap(map.getName()).deleteAsync();
 
             BatchResult<?> res = batch.execute();
@@ -214,14 +214,25 @@ public class RedissonSessionRepository implements FindByIndexNameSessionReposito
             Long remainTTL = (Long) list.get(0);
             Map<String, Object> oldState = (Map<String, Object>) list.get(2);
 
-            RBatch batchNew = redisson.createBatch(BatchOptions.defaults());
+            if (remainTTL == -2) {
+                // Either:
+                // - a parallel request also invoked changeSessionId() on this session, and the
+                //   expiredKey for oldId had been deleted
+                // - sessions do not expire
+                remainTTL = delegate.getMaxInactiveInterval().toMillis();
+            }
+
+            RBatch batchNew = redisson.createBatch();
             batchNew.getMap(keyPrefix + id, map.getCodec()).putAllAsync(oldState);
-            batchNew.getBucket(getExpiredKey(id)).setAsync("", remainTTL, TimeUnit.MILLISECONDS);
+            if (remainTTL > 0) {
+                batchNew.getBucket(getExpiredKey(id)).setAsync("", remainTTL, TimeUnit.MILLISECONDS);
+            }
             batchNew.execute();
+
+            map = redisson.getMap(keyPrefix + id, map.getCodec());
 
             return id;
         }
-
     }
 
     private static final Logger log = LoggerFactory.getLogger(RedissonSessionRepository.class);
@@ -247,10 +258,12 @@ public class RedissonSessionRepository implements FindByIndexNameSessionReposito
         }
 
         deletedTopic = this.redisson.getPatternTopic("__keyevent@*:del", StringCodec.INSTANCE);
-        deletedTopic.addListener(String.class, this);
         expiredTopic = this.redisson.getPatternTopic("__keyevent@*:expired", StringCodec.INSTANCE);
-        expiredTopic.addListener(String.class, this);
         createdTopic = this.redisson.getPatternTopic(getEventsChannelPrefix() + "*", StringCodec.INSTANCE);
+
+        // add listeners after all topics are created to avoid race and potential NPE if we get messages right away
+        deletedTopic.addListener(String.class, this);
+        expiredTopic.addListener(String.class, this);
         createdTopic.addListener(String.class, this);
     }
 

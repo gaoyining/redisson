@@ -15,6 +15,7 @@ import org.redisson.RedisRunner.FailedToStartRedisException;
 import org.redisson.RedisRunner.KEYSPACE_EVENTS_OPTIONS;
 import org.redisson.RedisRunner.RedisProcess;
 import org.redisson.api.*;
+import org.redisson.api.listener.SetObjectListener;
 import org.redisson.config.Config;
 
 public class RedissonBucketTest extends BaseTest {
@@ -79,8 +80,7 @@ public class RedissonBucketTest extends BaseTest {
         assertThat(latch.await(1, TimeUnit.SECONDS)).isTrue();
 
         redisson.shutdown();
-        instance.stop();
-    }
+        instance.stop();    }
 
     
     @Test
@@ -172,7 +172,7 @@ public class RedissonBucketTest extends BaseTest {
         assertThat(bucket.size()).isZero();
         bucket.set("1234");
         // json adds quotes
-        assertThat(bucket.size()).isEqualTo(6);
+        assertThat(bucket.size()).isEqualTo(7);
     }
     
     @Test
@@ -214,6 +214,23 @@ public class RedissonBucketTest extends BaseTest {
         assertThat(r1.getAndSet(null)).isEqualTo(Arrays.asList("1"));
         assertThat(r1.get()).isNull();
         assertThat(r1.isExists()).isFalse();
+    }
+
+    @Test
+    public void testSetIfExists() throws InterruptedException {
+        RBucket<String> r1 = redisson.getBucket("test1");
+        assertThat(r1.setIfExists("0")).isFalse();
+        assertThat(r1.isExists()).isFalse();
+        r1.set("1");
+        assertThat(r1.setIfExists("2")).isTrue();
+        assertThat(r1.get()).isEqualTo("2");
+
+        RBucket<String> r2 = redisson.getBucket("test2");
+        r2.set("1");
+        assertThat(r2.setIfExists("2", 1, TimeUnit.SECONDS)).isTrue();
+        assertThat(r2.get()).isEqualTo("2");
+        Thread.sleep(1000);
+        assertThat(r2.isExists()).isFalse();
     }
 
     @Test

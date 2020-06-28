@@ -68,7 +68,7 @@ public class RedissonBatchTest extends BaseTest {
             batch.getMap("" + i).containsValueAsync("" + i);
             batch.getMap("" + i).containsValueAsync(i);
         }
-        List<?> t = batch.execute();
+        BatchResult<?> t = batch.execute();
         System.out.println(t);
     }
 
@@ -236,6 +236,29 @@ public class RedissonBatchTest extends BaseTest {
         
         BatchResult<?> s = batch.execute();
         assertThat(s.getResponses().size()).isEqualTo(200);
+    }
+
+    @Test
+    public void testSyncSlavesWait() {
+        Config config = createConfig();
+        config.useSingleServer()
+                .setConnectionMinimumIdleSize(1)
+                .setConnectionPoolSize(1);
+
+        RedissonClient redisson = Redisson.create(config);
+
+        try {
+                    batchOptions
+                    .skipResult()
+                    .syncSlaves(2, 1, TimeUnit.SECONDS);
+            RBatch batch = redisson.createBatch(batchOptions);
+            RBucketAsync<Integer> bucket = batch.getBucket("1");
+            bucket.setAsync(1);
+            batch.execute();
+            String[] t = redisson.getKeys().getKeysStreamByPattern("*").toArray(String[]::new);
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
     }
 
     @Test
@@ -532,10 +555,10 @@ public class RedissonBatchTest extends BaseTest {
         }
         e.shutdown();
         Assert.assertTrue(e.awaitTermination(30, TimeUnit.SECONDS));
-        List<?> s = batch.execute();
+        BatchResult<?> s = batch.execute();
         
         int i = 0;
-        for (Object element : s) {
+        for (Object element : s.getResponses()) {
             RFuture<Long> a = futures.get(i);
             Assert.assertEquals(a.getNow(), element);
             i++;
@@ -551,7 +574,7 @@ public class RedissonBatchTest extends BaseTest {
         batch.getAtomicLong("counter").incrementAndGetAsync();
         batch.getAtomicLong("counter").incrementAndGetAsync();
 
-        List<?> res = batch.execute();
+        List<?> res = batch.execute().getResponses();
         Assert.assertEquals(5, res.size());
         Assert.assertTrue((Boolean)res.get(0));
         Assert.assertTrue((Boolean)res.get(1));

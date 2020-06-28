@@ -23,6 +23,7 @@ import java.util.Map;
  * @author Nikita Koksharov
  *
  */
+@Deprecated
 public interface ClusterNode extends Node {
 
     /**

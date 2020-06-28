@@ -31,10 +31,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 
 import org.redisson.SlotCallback;
-import org.redisson.api.RFuture;
-import org.redisson.api.RedissonClient;
-import org.redisson.api.RedissonReactiveClient;
-import org.redisson.api.RedissonRxClient;
+import org.redisson.api.*;
 import org.redisson.cache.LRUCacheMap;
 import org.redisson.client.RedisClient;
 import org.redisson.client.RedisException;
@@ -71,7 +68,7 @@ public class CommandAsyncService implements CommandAsyncExecutor {
     static final Logger log = LoggerFactory.getLogger(CommandAsyncService.class);
 
     final ConnectionManager connectionManager;
-    RedissonObjectBuilder objectBuilder;
+    protected RedissonObjectBuilder objectBuilder;
 
     public CommandAsyncService(ConnectionManager connectionManager) {
         this.connectionManager = connectionManager;
@@ -355,14 +352,12 @@ public class CommandAsyncService implements CommandAsyncExecutor {
 
     private NodeSource getNodeSource(String key) {
         int slot = connectionManager.calcSlot(key);
-        MasterSlaveEntry entry = connectionManager.getEntry(slot);
-        return new NodeSource(entry, slot);
+        return new NodeSource(slot);
     }
 
     private NodeSource getNodeSource(byte[] key) {
         int slot = connectionManager.calcSlot(key);
-        MasterSlaveEntry entry = connectionManager.getEntry(slot);
-        return new NodeSource(entry, slot);
+        return new NodeSource(slot);
     }
     
     @Override
@@ -385,6 +380,12 @@ public class CommandAsyncService implements CommandAsyncExecutor {
         RPromise<R> mainPromise = createPromise();
         async(true, new NodeSource(entry), codec, command, params, mainPromise, false);
         return mainPromise;
+    }
+
+    @Override
+    public <T, R> RFuture<R> writeAsync(RedisClient client, Codec codec, RedisCommand<T> command, Object... params) {
+        MasterSlaveEntry entry = getConnectionManager().getEntry(client);
+        return writeAsync(entry, codec, command, params);
     }
 
     @Override
@@ -648,9 +649,9 @@ public class CommandAsyncService implements CommandAsyncExecutor {
         RPromise<R> result = new RedissonPromise<>();
         AtomicReference<Throwable> failed = new AtomicReference<>();
         AtomicLong executed = new AtomicLong(range2key.size());
-        BiConsumer<List<?>, Throwable> listener = (t, u) -> {
+        BiConsumer<BatchResult<?>, Throwable> listener = (t, u) -> {
             if (u == null) {
-                for (T res : (List<T>) t) {
+                for (T res : (List<T>) t.getResponses()) {
                     if (res != null) {
                         callback.onSlotResult(res);
                     }
@@ -684,7 +685,7 @@ public class CommandAsyncService implements CommandAsyncExecutor {
                 }
             }
 
-            RFuture<List<?>> future = executorService.executeAsync();
+            RFuture<BatchResult<?>> future = executorService.executeAsync();
             future.onComplete(listener);
         }
 

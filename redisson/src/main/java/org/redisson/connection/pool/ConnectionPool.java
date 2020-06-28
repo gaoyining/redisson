@@ -15,15 +15,8 @@
  */
 package org.redisson.connection.pool;
 
-import java.net.InetSocketAddress;
-import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.BiConsumer;
-
+import io.netty.util.Timeout;
+import io.netty.util.TimerTask;
 import org.redisson.api.NodeType;
 import org.redisson.api.RFuture;
 import org.redisson.client.RedisConnection;
@@ -40,8 +33,14 @@ import org.redisson.misc.RedissonPromise;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.netty.util.Timeout;
-import io.netty.util.TimerTask;
+import java.net.InetSocketAddress;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiConsumer;
 
 /**
  * Base connection pool class 
@@ -198,8 +197,8 @@ abstract class ConnectionPool<T extends RedisConnection> {
             return acquireConnection(command, entry);
         }
         
-        List<InetSocketAddress> failed = new LinkedList<InetSocketAddress>();
-        List<InetSocketAddress> freezed = new LinkedList<InetSocketAddress>();
+        List<InetSocketAddress> failed = new LinkedList<>();
+        List<InetSocketAddress> freezed = new LinkedList<>();
         for (ClientConnectionsEntry entry : entries) {
             if (entry.isFailed()) {
                 failed.add(entry.getClient().getAddr());
@@ -208,12 +207,12 @@ abstract class ConnectionPool<T extends RedisConnection> {
             }
         }
 
-        StringBuilder errorMsg = new StringBuilder(getClass().getSimpleName() + " no available Redis entries. ");
+        StringBuilder errorMsg = new StringBuilder(getClass().getSimpleName() + " no available Redis entries. Master entry host: " + masterSlaveEntry.getClient().getAddr());
         if (!freezed.isEmpty()) {
-            errorMsg.append(" Disconnected hosts: " + freezed);
+            errorMsg.append(" Disconnected hosts: ").append(freezed);
         }
         if (!failed.isEmpty()) {
-            errorMsg.append(" Hosts disconnected due to errors during `failedSlaveCheckInterval`: " + failed);
+            errorMsg.append(" Hosts disconnected due to errors during `failedSlaveCheckInterval`: ").append(failed);
         }
 
         RedisConnectionException exception = new RedisConnectionException(errorMsg.toString());
@@ -416,25 +415,18 @@ abstract class ConnectionPool<T extends RedisConnection> {
                             }
                         };
 
-                        if (entry.getConfig().getPassword() != null) {
-                            RFuture<Void> temp = c.async(RedisCommands.AUTH, config.getPassword());
-                            temp.onComplete((res, ex) -> {
-                                ping(c, pingListener);
-                            });
-                        } else {
-                            ping(c, pingListener);
-                        }
+                        RFuture<String> f = c.async(RedisCommands.PING);
+                        f.onComplete(pingListener);
                 });
             }
         }, config.getFailedSlaveReconnectionInterval(), TimeUnit.MILLISECONDS);
     }
 
-    private void ping(RedisConnection c, BiConsumer<String, Throwable> pingListener) {
-        RFuture<String> f = c.async(RedisCommands.PING);
-        f.onComplete(pingListener);
-    }
-
     public void returnConnection(ClientConnectionsEntry entry, T connection) {
+        if (entry == null) {
+            connection.closeAsync();
+            return;
+        }
         if (entry.isFreezed() && entry.getFreezeReason() != FreezeReason.SYSTEM) {
             connection.closeAsync();
             entry.getAllConnections().remove(connection);

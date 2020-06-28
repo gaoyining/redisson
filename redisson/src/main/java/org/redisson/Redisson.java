@@ -20,12 +20,17 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 
 import org.redisson.api.*;
+import org.redisson.api.redisnode.*;
 import org.redisson.client.codec.Codec;
 import org.redisson.command.CommandExecutor;
 import org.redisson.config.Config;
 import org.redisson.config.ConfigSupport;
 import org.redisson.connection.ConnectionManager;
 import org.redisson.eviction.EvictionScheduler;
+import org.redisson.redisnode.RedissonClusterNodes;
+import org.redisson.redisnode.RedissonMasterSlaveNodes;
+import org.redisson.redisnode.RedissonSentinelMasterSlaveNodes;
+import org.redisson.redisnode.RedissonSingleNode;
 import org.redisson.remote.ResponseEntry;
 import org.redisson.transaction.RedissonTransaction;
 
@@ -152,6 +157,16 @@ public class Redisson implements RedissonClient {
             react.enableRedissonReferenceSupport();
         }
         return react;
+    }
+
+    @Override
+    public <V> RTimeSeries<V> getTimeSeries(String name) {
+        return new RedissonTimeSeries<>(evictionScheduler, connectionManager.getCommandExecutor(), name);
+    }
+
+    @Override
+    public <V> RTimeSeries<V> getTimeSeries(String name, Codec codec) {
+        return new RedissonTimeSeries<>(codec, evictionScheduler, connectionManager.getCommandExecutor(), name);
     }
 
     @Override
@@ -379,12 +394,6 @@ public class Redisson implements RedissonClient {
     @Override
     public RScheduledExecutorService getExecutorService(String name, ExecutorOptions options) {
         return getExecutorService(name, connectionManager.getCodec(), options);
-    }
-
-    @Override
-    @Deprecated
-    public RScheduledExecutorService getExecutorService(Codec codec, String name) {
-        return getExecutorService(name, codec);
     }
 
     @Override
@@ -641,6 +650,35 @@ public class Redisson implements RedissonClient {
     @Override
     public Config getConfig() {
         return config;
+    }
+
+    @Override
+    public <T extends BaseRedisNodes> T getRedisNodes(org.redisson.api.redisnode.RedisNodes<T> nodes) {
+        if (nodes.getClazz() == RedisSingle.class) {
+            if (config.isSentinelConfig() || config.isClusterConfig()) {
+                throw new IllegalArgumentException("Can't be used in non Redis single configuration");
+            }
+            return (T) new RedissonSingleNode(connectionManager);
+        }
+        if (nodes.getClazz() == RedisCluster.class) {
+            if (!config.isClusterConfig()) {
+                throw new IllegalArgumentException("Can't be used in non Redis Cluster configuration");
+            }
+            return (T) new RedissonClusterNodes(connectionManager);
+        }
+        if (nodes.getClazz() == RedisSentinelMasterSlave.class) {
+            if (!config.isSentinelConfig()) {
+                throw new IllegalArgumentException("Can't be used in non Redis Sentinel configuration");
+            }
+            return (T) new RedissonSentinelMasterSlaveNodes(connectionManager);
+        }
+        if (nodes.getClazz() == RedisMasterSlave.class) {
+            if (config.isSentinelConfig() || config.isClusterConfig()) {
+                throw new IllegalArgumentException("Can't be used in non Redis Master Slave configuration");
+            }
+            return (T) new RedissonMasterSlaveNodes(connectionManager);
+        }
+        throw new IllegalArgumentException();
     }
 
     @Override

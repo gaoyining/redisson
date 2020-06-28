@@ -132,6 +132,7 @@ public final class RedisClient {
         bootstrap.option(ChannelOption.CONNECT_TIMEOUT_MILLIS, config.getConnectTimeout());
         bootstrap.option(ChannelOption.SO_KEEPALIVE, config.isKeepAlive());
         bootstrap.option(ChannelOption.TCP_NODELAY, config.isTcpNoDelay());
+        config.getNettyHook().afterBoostrapInitialization(bootstrap);
         return bootstrap;
     }
     
@@ -176,7 +177,7 @@ public final class RedisClient {
         byte[] addr = NetUtil.createByteArrayFromIpAddressString(uri.getHost());
         if (addr != null) {
             try {
-                resolvedAddr = new InetSocketAddress(InetAddress.getByAddress(uri.getHost(), addr), uri.getPort());
+                resolvedAddr = new InetSocketAddress(InetAddress.getByAddress(addr), uri.getPort());
             } catch (UnknownHostException e) {
                 // skip
             }
@@ -195,7 +196,8 @@ public final class RedisClient {
                 }
                 
                 InetSocketAddress resolved = future.getNow();
-                resolvedAddr = createInetSocketAddress(resolved, uri.getHost());
+                byte[] addr = resolved.getAddress().getAddress();
+                resolvedAddr = new InetSocketAddress(InetAddress.getByAddress(uri.getHost(), addr), resolved.getPort());
                 promise.trySuccess(resolvedAddr);
             }
 
@@ -203,15 +205,6 @@ public final class RedisClient {
         return promise;
     }
 
-    private InetSocketAddress createInetSocketAddress(InetSocketAddress resolved, String host) {
-        byte[] addr = NetUtil.createByteArrayFromIpAddressString(resolved.getAddress().getHostAddress());
-        try {
-            return new InetSocketAddress(InetAddress.getByAddress(host, addr), resolved.getPort());
-        } catch (UnknownHostException e) {
-            throw new RuntimeException(e);
-        }
-    }
-    
     public RFuture<RedisConnection> connectAsync() {
         final RPromise<RedisConnection> f = new RedissonPromise<RedisConnection>();
         
@@ -226,6 +219,12 @@ public final class RedisClient {
             channelFuture.addListener(new ChannelFutureListener() {
                 @Override
                 public void operationComplete(final ChannelFuture future) throws Exception {
+                    if (bootstrap.config().group().isShuttingDown()) {
+                        IllegalStateException cause = new IllegalStateException("RedisClient is shutdown");
+                        f.tryFailure(cause);
+                        return;
+                    }
+
                     if (future.isSuccess()) {
                         final RedisConnection c = RedisConnection.getFrom(future.channel());
                         c.getConnectionPromise().onComplete((res, e) -> {
@@ -279,6 +278,12 @@ public final class RedisClient {
             channelFuture.addListener(new ChannelFutureListener() {
                 @Override
                 public void operationComplete(final ChannelFuture future) throws Exception {
+                    if (bootstrap.config().group().isShuttingDown()) {
+                        IllegalStateException cause = new IllegalStateException("RedisClient is shutdown");
+                        f.tryFailure(cause);
+                        return;
+                    }
+
                     if (future.isSuccess()) {
                         final RedisPubSubConnection c = RedisPubSubConnection.getFrom(future.channel());
                         c.<RedisPubSubConnection>getConnectionPromise().onComplete((res, e) -> {

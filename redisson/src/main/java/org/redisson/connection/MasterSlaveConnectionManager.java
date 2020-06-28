@@ -399,7 +399,7 @@ public class MasterSlaveConnectionManager implements ConnectionManager {
 
     protected MasterSlaveServersConfig create(BaseMasterSlaveServersConfig<?> cfg) {
         MasterSlaveServersConfig c = new MasterSlaveServersConfig();
-        
+
         c.setPingConnectionInterval(cfg.getPingConnectionInterval());
         c.setSslEnableEndpointIdentification(cfg.isSslEnableEndpointIdentification());
         c.setSslProvider(cfg.getSslProvider());
@@ -411,9 +411,9 @@ public class MasterSlaveConnectionManager implements ConnectionManager {
         c.setRetryInterval(cfg.getRetryInterval());
         c.setRetryAttempts(cfg.getRetryAttempts());
         c.setTimeout(cfg.getTimeout());
-        c.setPingTimeout(cfg.getPingTimeout());
         c.setLoadBalancer(cfg.getLoadBalancer());
         c.setPassword(cfg.getPassword());
+        c.setUsername(cfg.getUsername());
         c.setClientName(cfg.getClientName());
         c.setMasterConnectionPoolSize(cfg.getMasterConnectionPoolSize());
         c.setSlaveConnectionPoolSize(cfg.getSlaveConnectionPoolSize());
@@ -483,7 +483,9 @@ public class MasterSlaveConnectionManager implements ConnectionManager {
               .setPingConnectionInterval(config.getPingConnectionInterval())
               .setKeepAlive(config.isKeepAlive())
               .setTcpNoDelay(config.isTcpNoDelay())
-              .setPassword(config.getPassword());
+              .setUsername(config.getUsername())
+              .setPassword(config.getPassword())
+              .setNettyHook(cfg.getNettyHook());
         
         if (type != NodeType.SENTINEL) {
             redisConfig.setDatabase(config.getDatabase());
@@ -539,7 +541,13 @@ public class MasterSlaveConnectionManager implements ConnectionManager {
         }
         return null;
     }
-    
+
+    @Override
+    public MasterSlaveEntry getEntry(String name) {
+        int slot = calcSlot(name);
+        return getEntry(slot);
+    }
+
     @Override
     public MasterSlaveEntry getEntry(int slot) {
         return slot2entry.get(slot);
@@ -562,16 +570,28 @@ public class MasterSlaveConnectionManager implements ConnectionManager {
         MasterSlaveEntry oldEntry = slot2entry.getAndSet(slot, entry);
         if (oldEntry != entry) {
             entry.incReference();
+            shutdownEntry(oldEntry);
         }
         client2entry.put(entry.getClient(), entry);
     }
 
-    protected final MasterSlaveEntry removeEntry(Integer slot) {
+    protected final void removeEntry(Integer slot) {
         MasterSlaveEntry entry = slot2entry.getAndSet(slot, null);
-        if (entry.decReference() == 0) {
+        shutdownEntry(entry);
+    }
+
+    private void shutdownEntry(MasterSlaveEntry entry) {
+        if (entry != null && entry.decReference() == 0) {
             client2entry.remove(entry.getClient());
+            entry.getAllEntries().forEach(e -> entry.nodeDown(e));
+            entry.masterDown();
+            entry.shutdownAsync();
+            String slaves = entry.getAllEntries().stream()
+                    .filter(e -> !e.getClient().getAddr().equals(entry.getClient().getAddr()))
+                    .map(e -> e.getClient().toString())
+                    .collect(Collectors.joining(","));
+            log.info("{} master and related slaves: {} removed", entry.getClient().getAddr(), slaves);
         }
-        return entry;
     }
 
     @Override
@@ -624,9 +644,9 @@ public class MasterSlaveConnectionManager implements ConnectionManager {
     protected RFuture<RedisConnection> createNodeNotFoundFuture(NodeSource source) {
         RedisNodeNotFoundException ex;
         if (source.getSlot() != null && source.getAddr() == null && source.getRedisClient() == null) {
-            ex = new RedisNodeNotFoundException("Node for slot: " + source.getSlot() + " hasn't been discovered yet. Check cluster slots coverage using CLUSTER NODES command");
+            ex = new RedisNodeNotFoundException("Node for slot: " + source.getSlot() + " hasn't been discovered yet. Check cluster slots coverage using CLUSTER NODES command. Increase value of retryAttempts and/or retryInterval settings.");
         } else {
-            ex = new RedisNodeNotFoundException("Node: " + source + " hasn't been discovered yet.");
+            ex = new RedisNodeNotFoundException("Node: " + source + " hasn't been discovered yet. Increase value of retryAttempts and/or retryInterval settings.");
         }
         return RedissonPromise.newFailedFuture(ex);
     }
@@ -665,15 +685,6 @@ public class MasterSlaveConnectionManager implements ConnectionManager {
         
         connectionWatcher.stop();
 
-        if (cfg.getExecutor() == null) {
-            executor.shutdown();
-            try {
-                executor.awaitTermination(timeout, unit);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }
-
         RPromise<Void> result = new RedissonPromise<Void>();
         CountableListener<Void> listener = new CountableListener<Void>(result, null, getEntrySet().size());
         for (MasterSlaveEntry entry : getEntrySet()) {
@@ -684,6 +695,15 @@ public class MasterSlaveConnectionManager implements ConnectionManager {
         resolverGroup.close();
 
         shutdownLatch.close();
+        if (cfg.getExecutor() == null) {
+            executor.shutdown();
+            try {
+                executor.awaitTermination(timeout, unit);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+
         shutdownPromise.trySuccess(null);
         shutdownLatch.awaitUninterruptibly();
         

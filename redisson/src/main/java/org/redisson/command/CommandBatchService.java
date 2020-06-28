@@ -28,6 +28,7 @@ import org.redisson.client.protocol.RedisCommands;
 import org.redisson.connection.ConnectionManager;
 import org.redisson.connection.MasterSlaveEntry;
 import org.redisson.connection.NodeSource;
+import org.redisson.liveobject.core.RedissonObjectBuilder;
 import org.redisson.misc.CountableListener;
 import org.redisson.misc.RPromise;
 import org.redisson.misc.RedissonPromise;
@@ -102,7 +103,7 @@ public class CommandBatchService extends CommandAsyncService {
     private ConcurrentMap<MasterSlaveEntry, Entry> commands = new ConcurrentHashMap<>();
     private ConcurrentMap<MasterSlaveEntry, ConnectionEntry> connections = new ConcurrentHashMap<>();
     
-    private BatchOptions options;
+    private BatchOptions options = BatchOptions.defaults();
     
     private Map<RFuture<?>, List<CommandBatchService>> nestedServices = new ConcurrentHashMap<>();
 
@@ -115,6 +116,10 @@ public class CommandBatchService extends CommandAsyncService {
     public CommandBatchService(ConnectionManager connectionManager, BatchOptions options) {
         super(connectionManager);
         this.options = options;
+    }
+
+    public void setObjectBuilder(RedissonObjectBuilder objectBuilder) {
+        this.objectBuilder = objectBuilder;
     }
     
     public BatchOptions getOptions() {
@@ -151,18 +156,13 @@ public class CommandBatchService extends CommandAsyncService {
     }
     
     public BatchResult<?> execute() {
-        RFuture<BatchResult<?>> f = executeAsync(BatchOptions.defaults());
-        return get(f);
-    }
-    
-    public BatchResult<?> execute(BatchOptions options) {
-        RFuture<BatchResult<?>> f = executeAsync(options);
+        RFuture<BatchResult<?>> f = executeAsync();
         return get(f);
     }
 
     public RFuture<Void> executeAsyncVoid() {
         RedissonPromise<Void> promise = new RedissonPromise<Void>();
-        RFuture<BatchResult<?>> resFuture = executeAsync(BatchOptions.defaults());
+        RFuture<BatchResult<?>> resFuture = executeAsync();
         resFuture.onComplete((res, e) -> {
             if (e == null) {
                 promise.trySuccess(null);
@@ -173,25 +173,17 @@ public class CommandBatchService extends CommandAsyncService {
         return promise;
     }
     
-    public RFuture<List<?>> executeAsync() {
-        return executeAsync(BatchOptions.defaults());
-    }
-    
-    public <R> RFuture<R> executeAsync(BatchOptions options) {
+    public RFuture<BatchResult<?>> executeAsync() {
         if (executed.get()) {
             throw new IllegalStateException("Batch already executed!");
         }
         
         if (commands.isEmpty()) {
             executed.set(true);
-            BatchResult<Object> result = new BatchResult<Object>(Collections.emptyList(), 0);
-            return (RFuture<R>) RedissonPromise.newSucceededFuture(result);
+            BatchResult<Object> result = new BatchResult<>(Collections.emptyList(), 0);
+            return RedissonPromise.newSucceededFuture(result);
         }
-        
-        if (this.options == null) {
-            this.options = options;
-        }
-        
+
         if (isRedisBasedQueue()) {
             return executeRedisBasedQueue();
         }
@@ -222,20 +214,25 @@ public class CommandBatchService extends CommandAsyncService {
             }
         }
         
-        RPromise<R> resultPromise;
+        RPromise<BatchResult<?>> promise = new RedissonPromise<>();
         RPromise<Void> voidPromise = new RedissonPromise<Void>();
-        if (this.options.isSkipResult()) {
+        if (this.options.isSkipResult()
+                && this.options.getSyncSlaves() == 0) {
             voidPromise.onComplete((res, e) -> {
                 executed.set(true);
                 nestedServices.clear();
+                promise.trySuccess(new BatchResult<>(Collections.emptyList(), 0));
             });
-            resultPromise = (RPromise<R>) voidPromise;
         } else {
-            RPromise<Object> promise = new RedissonPromise<Object>();
             voidPromise.onComplete((res, ex) -> {
                 executed.set(true);
                 if (ex != null) {
                     promise.tryFailure(ex);
+
+                    for (Entry e : commands.values()) {
+                        e.getCommands().forEach(t -> t.tryFailure(ex));
+                    }
+
                     nestedServices.clear();
                     return;
                 }
@@ -251,7 +248,8 @@ public class CommandBatchService extends CommandAsyncService {
                     if (isWaitCommand(commandEntry)) {
                         syncedSlaves = (Integer) commandEntry.getPromise().getNow();
                     } else if (!commandEntry.getCommand().getName().equals(RedisCommands.MULTI.getName())
-                            && !commandEntry.getCommand().getName().equals(RedisCommands.EXEC.getName())) {
+                            && !commandEntry.getCommand().getName().equals(RedisCommands.EXEC.getName())
+                            && !this.options.isSkipResult()) {
                         
                         if (commandEntry.getPromise().isCancelled()) {
                             continue;
@@ -272,7 +270,6 @@ public class CommandBatchService extends CommandAsyncService {
                 
                 nestedServices.clear();
             });
-            resultPromise = (RPromise<R>) promise;
         }
 
         AtomicInteger slots = new AtomicInteger(commands.size());
@@ -293,7 +290,7 @@ public class CommandBatchService extends CommandAsyncService {
                                                     connectionManager, this.options, e.getValue(), slots);
             executor.execute();
         }
-        return resultPromise;
+        return promise;
     }
 
     private <R> RFuture<R> executeRedisBasedQueue() {

@@ -93,7 +93,7 @@ public abstract class LocalCacheListener {
         return instanceId;
     }
     
-    public Map<CacheKey, CacheValue> createCache(LocalCachedMapOptions<?, ?> options) {
+    public ConcurrentMap<CacheKey, CacheValue> createCache(LocalCachedMapOptions<?, ?> options) {
         if (options.getCacheProvider() == LocalCachedMapOptions.CacheProvider.CAFFEINE) {
             Caffeine<Object, Object> caffeineBuilder = Caffeine.newBuilder();
             if (options.getTimeToLiveInMillis() > 0) {
@@ -115,13 +115,13 @@ public abstract class LocalCacheListener {
         }
 
         if (options.getEvictionPolicy() == EvictionPolicy.NONE) {
-            return new NoneCacheMap<CacheKey, CacheValue>(options.getTimeToLiveInMillis(), options.getMaxIdleInMillis());
+            return new NoneCacheMap<>(options.getTimeToLiveInMillis(), options.getMaxIdleInMillis());
         }
         if (options.getEvictionPolicy() == EvictionPolicy.LRU) {
-            return new LRUCacheMap<CacheKey, CacheValue>(options.getCacheSize(), options.getTimeToLiveInMillis(), options.getMaxIdleInMillis());
+            return new LRUCacheMap<>(options.getCacheSize(), options.getTimeToLiveInMillis(), options.getMaxIdleInMillis());
         }
         if (options.getEvictionPolicy() == EvictionPolicy.LFU) {
-            return new LFUCacheMap<CacheKey, CacheValue>(options.getCacheSize(), options.getTimeToLiveInMillis(), options.getMaxIdleInMillis());
+            return new LFUCacheMap<>(options.getCacheSize(), options.getTimeToLiveInMillis(), options.getMaxIdleInMillis());
         }
         if (options.getEvictionPolicy() == EvictionPolicy.SOFT) {
             return ReferenceCacheMap.soft(options.getTimeToLiveInMillis(), options.getMaxIdleInMillis());
@@ -190,8 +190,10 @@ public abstract class LocalCacheListener {
                         LocalCachedMapClear clearMsg = (LocalCachedMapClear) msg;
                         cache.clear();
 
-                        RSemaphore semaphore = getClearSemaphore(clearMsg.getRequestId());
-                        semaphore.releaseAsync();
+                        if (clearMsg.isReleaseSemaphore()) {
+                            RSemaphore semaphore = getClearSemaphore(clearMsg.getRequestId());
+                            semaphore.releaseAsync();
+                        }
                     }
                     
                     if (msg instanceof LocalCachedMapInvalidate) {
@@ -247,7 +249,7 @@ public abstract class LocalCacheListener {
     public RFuture<Void> clearLocalCacheAsync() {
         RPromise<Void> result = new RedissonPromise<Void>();
         byte[] id = generateId();
-        RFuture<Long> future = invalidationTopic.publishAsync(new LocalCachedMapClear(id));
+        RFuture<Long> future = invalidationTopic.publishAsync(new LocalCachedMapClear(id, true));
         future.onComplete((res, e) -> {
             if (e != null) {
                 result.tryFailure(e);
@@ -255,7 +257,7 @@ public abstract class LocalCacheListener {
             }
 
             RSemaphore semaphore = getClearSemaphore(id);
-            semaphore.acquireAsync(res.intValue()).onComplete((r, ex) -> {
+            semaphore.tryAcquireAsync(res.intValue(), 50, TimeUnit.SECONDS).onComplete((r, ex) -> {
                 if (ex != null) {
                     result.tryFailure(ex);
                     return;
@@ -273,6 +275,10 @@ public abstract class LocalCacheListener {
         });
         
         return result;
+    }
+
+    public RTopic getInvalidationTopic() {
+        return invalidationTopic;
     }
 
     public String getInvalidationTopicName() {
@@ -346,7 +352,7 @@ public abstract class LocalCacheListener {
         });
     }
 
-    protected RSemaphore getClearSemaphore(byte[] requestId) {
+    private RSemaphore getClearSemaphore(byte[] requestId) {
         String id = ByteBufUtil.hexDump(requestId);
         RSemaphore semaphore = new RedissonSemaphore(commandExecutor, name + ":clear:" + id);
         return semaphore;

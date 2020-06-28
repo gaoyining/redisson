@@ -15,21 +15,22 @@
  */
 package org.redisson.config;
 
+import io.netty.channel.EventLoopGroup;
+import org.redisson.client.DefaultNettyHook;
+import org.redisson.client.NettyHook;
+import org.redisson.client.codec.Codec;
+import org.redisson.codec.MarshallingCodec;
+import org.redisson.connection.AddressResolverGroupFactory;
+import org.redisson.connection.ConnectionManager;
+import org.redisson.connection.DnsAddressResolverGroupFactory;
+import org.redisson.connection.ReplicatedConnectionManager;
+
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Reader;
 import java.net.URL;
 import java.util.concurrent.ExecutorService;
-
-import org.redisson.client.codec.Codec;
-import org.redisson.codec.FstCodec;
-import org.redisson.connection.AddressResolverGroupFactory;
-import org.redisson.connection.ConnectionManager;
-import org.redisson.connection.DnsAddressResolverGroupFactory;
-import org.redisson.connection.ReplicatedConnectionManager;
-
-import io.netty.channel.EventLoopGroup;
 
 /**
  * Redisson configuration
@@ -88,7 +89,11 @@ public class Config {
     private int maxCleanUpDelay = 30*60;
 
     private int cleanUpKeysAmount = 100;
-    
+
+    private NettyHook nettyHook = new DefaultNettyHook();
+
+    private boolean useThreadClassLoader = true;
+
     /**
      * AddressResolverGroupFactory switch between default and round robin
      */
@@ -98,13 +103,15 @@ public class Config {
     }
 
     public Config(Config oldConf) {
+        setNettyHook(oldConf.getNettyHook());
         setExecutor(oldConf.getExecutor());
 
         if (oldConf.getCodec() == null) {
             // use it by default
-            oldConf.setCodec(new FstCodec());
+            oldConf.setCodec(new MarshallingCodec());
         }
 
+        setUseThreadClassLoader(oldConf.isUseThreadClassLoader());
         setMinCleanUpDelay(oldConf.getMinCleanUpDelay());
         setMaxCleanUpDelay(oldConf.getMaxCleanUpDelay());
         setCleanUpKeysAmount(oldConf.getCleanUpKeysAmount());
@@ -139,6 +146,21 @@ public class Config {
             useCustomServers(oldConf.getConnectionManager());
         }
 
+    }
+
+    public NettyHook getNettyHook() {
+        return nettyHook;
+    }
+
+    /**
+     * Netty hook applied to Netty Bootstrap and Channel objects.
+     *
+     * @param nettyHook - netty hook object
+     * @return config
+     */
+    public Config setNettyHook(NettyHook nettyHook) {
+        this.nettyHook = nettyHook;
+        return this;
     }
 
     /**
@@ -696,6 +718,7 @@ public class Config {
      * @param decodeInExecutor - <code>true</code> to use executor's threads, <code>false</code> to use netty's threads.
      * @return config
      */
+    @Deprecated
     public Config setDecodeInExecutor(boolean decodeInExecutor) {
         this.decodeInExecutor = decodeInExecutor;
         return this;
@@ -758,4 +781,22 @@ public class Config {
         return this;
     }
 
+    public boolean isUseThreadClassLoader() {
+        return useThreadClassLoader;
+    }
+
+    /**
+     * Defines whether to supply Thread ContextClassLoader to Codec.
+     * Usage of Thread.getContextClassLoader() may resolve ClassNotFoundException error.
+     * For example, this error arise if Redisson is used in both Tomcat and deployed application.
+     * <p>
+     * Default is <code>true</code>.
+     *
+     * @param useThreadClassLoader <code>true</code> if Thread ContextClassLoader is used, <code>false</code> otherwise.
+     * @return config
+     */
+    public Config setUseThreadClassLoader(boolean useThreadClassLoader) {
+        this.useThreadClassLoader = useThreadClassLoader;
+        return this;
+    }
 }

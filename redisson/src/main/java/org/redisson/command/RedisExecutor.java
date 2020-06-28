@@ -281,19 +281,15 @@ public class RedisExecutor<V, R> {
 
     private void scheduleResponseTimeout(RPromise<R> attemptPromise, RedisConnection connection) {
         long timeoutTime = responseTimeout;
-        if (command != null 
+        if (command != null
                 && (RedisCommands.BLOCKING_COMMAND_NAMES.contains(command.getName())
                         || RedisCommands.BLOCKING_COMMANDS.contains(command))) {
             Long popTimeout = null;
             if (RedisCommands.BLOCKING_COMMANDS.contains(command)) {
-                boolean found = false;
-                for (Object param : params) {
-                    if (found) {
-                        popTimeout = Long.valueOf(param.toString()) / 1000;
+                for (int i = 0; i < params.length; i++) {
+                    if ("BLOCK".equals(params[i])) {
+                        popTimeout = Long.valueOf(params[i+1].toString()) / 1000;
                         break;
-                    }
-                    if ("BLOCK".equals(param)) {
-                        found = true; 
                     }
                 }
             } else {
@@ -332,7 +328,7 @@ public class RedisExecutor<V, R> {
 
                 attemptPromise.tryFailure(
                         new RedisResponseTimeoutException("Redis server response timeout (" + timeoutAmount + " ms) occured"
-                                + " after " + attempt + " retry attempts. Increase nettyThreads and/or timeout settings. Command: "
+                                + " after " + attempt + " retry attempts. Increase nettyThreads and/or timeout settings. Try to define pingConnectionInterval setting. Command: "
                                 + LogHelper.toString(command, params) + ", channel: " + connection.getChannel()));
             }
         };
@@ -426,7 +422,8 @@ public class RedisExecutor<V, R> {
             }
             
             if (attemptFuture.cause() instanceof RedisLoadingException
-                    || attemptFuture.cause() instanceof RedisTryAgainException) {
+                    || attemptFuture.cause() instanceof RedisTryAgainException
+                        || attemptFuture.cause() instanceof RedisClusterDownException) {
                 if (attempt < attempts) {
                     onException();
                     connectionManager.newTimeout(new TimerTask() {
@@ -606,7 +603,7 @@ public class RedisExecutor<V, R> {
             list.add(new CommandData<Void, Void>(promise, codec, RedisCommands.ASKING, new Object[]{}));
             list.add(new CommandData<V, R>(attemptPromise, codec, command, params));
             RPromise<Void> main = new RedissonPromise<Void>();
-            writeFuture = connection.send(new CommandsData(main, list, false));
+            writeFuture = connection.send(new CommandsData(main, list, false, false));
         } else {
             if (log.isDebugEnabled()) {
                 log.debug("acquired connection for command {} and params {} from slot {} using node {}... {}",
@@ -651,10 +648,10 @@ public class RedisExecutor<V, R> {
 
     protected Codec getCodec(Codec codec) {
         if (codec == null) {
-            return codec;
+            return null;
         }
 
-        if (codec.getClassLoader() != codec.getClass().getClassLoader()) {
+        if (!connectionManager.getCfg().isUseThreadClassLoader()) {
             return codec;
         }
 

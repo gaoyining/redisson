@@ -45,7 +45,8 @@ public class RedisClientConfig {
     private Class<? extends SocketChannel> socketChannelClass = NioSocketChannel.class;
     private int connectTimeout = 10000;
     private int commandTimeout = 10000;
-    
+
+    private String username;
     private String password;
     private int database;
     private String clientName;
@@ -63,12 +64,14 @@ public class RedisClientConfig {
     private String sslTruststorePassword;
     private URL sslKeystore;
     private String sslKeystorePassword;
+    private NettyHook nettyHook = new DefaultNettyHook();
     
     public RedisClientConfig() {
     }
     
     RedisClientConfig(RedisClientConfig config) {
         super();
+        this.nettyHook = config.nettyHook;
         this.addr = config.addr;
         this.address = config.address;
         this.timer = config.timer;
@@ -78,6 +81,7 @@ public class RedisClientConfig {
         this.connectTimeout = config.connectTimeout;
         this.commandTimeout = config.commandTimeout;
         this.password = config.password;
+        this.username = config.username;
         this.database = config.database;
         this.clientName = config.clientName;
         this.readOnly = config.readOnly;
@@ -95,7 +99,14 @@ public class RedisClientConfig {
         this.sslHostname = config.sslHostname;
         this.decodeInExecutor = config.decodeInExecutor;
     }
-    
+
+    public NettyHook getNettyHook() {
+        return nettyHook;
+    }
+    public void setNettyHook(NettyHook nettyHook) {
+        this.nettyHook = nettyHook;
+    }
+
     public String getSslHostname() {
         return sslHostname;
     }
@@ -267,6 +278,7 @@ public class RedisClientConfig {
     public boolean isDecodeInExecutor() {
         return decodeInExecutor;
     }
+    @Deprecated
     public RedisClientConfig setDecodeInExecutor(boolean decodeInExecutor) {
         this.decodeInExecutor = decodeInExecutor;
         return this;
@@ -303,7 +315,13 @@ public class RedisClientConfig {
         this.resolverGroup = resolverGroup;
         return this;
     }
-    
-    
-    
+
+    public String getUsername() {
+        return username;
+    }
+    public RedisClientConfig setUsername(String username) {
+        this.username = username;
+        return this;
+    }
+
 }

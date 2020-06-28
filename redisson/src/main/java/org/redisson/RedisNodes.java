@@ -15,6 +15,16 @@
  */
 package org.redisson;
 
+import org.redisson.api.Node;
+import org.redisson.api.NodeType;
+import org.redisson.api.NodesGroup;
+import org.redisson.api.RFuture;
+import org.redisson.client.RedisConnection;
+import org.redisson.client.protocol.RedisCommands;
+import org.redisson.connection.*;
+import org.redisson.connection.ClientConnectionsEntry.FreezeReason;
+import org.redisson.misc.RedisURI;
+
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -24,26 +34,13 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-import org.redisson.api.Node;
-import org.redisson.api.NodeType;
-import org.redisson.api.NodesGroup;
-import org.redisson.api.RFuture;
-import org.redisson.client.RedisConnection;
-import org.redisson.client.protocol.RedisCommands;
-import org.redisson.connection.ClientConnectionsEntry;
-import org.redisson.connection.ClientConnectionsEntry.FreezeReason;
-import org.redisson.connection.ConnectionListener;
-import org.redisson.connection.ConnectionManager;
-import org.redisson.connection.MasterSlaveEntry;
-import org.redisson.connection.RedisClientEntry;
-import org.redisson.misc.RedisURI;
-
 /**
  * 
  * @author Nikita Koksharov
  *
  * @param <N> node type
  */
+@Deprecated
 public class RedisNodes<N extends Node> implements NodesGroup<N> {
 
     final ConnectionManager connectionManager;

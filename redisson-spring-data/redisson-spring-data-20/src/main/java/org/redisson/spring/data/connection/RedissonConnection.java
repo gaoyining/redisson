@@ -28,6 +28,7 @@ import org.redisson.client.codec.*;
 import org.redisson.client.protocol.RedisCommand;
 import org.redisson.client.protocol.RedisCommands;
 import org.redisson.client.protocol.RedisStrictCommand;
+import org.redisson.client.protocol.convertor.BooleanNullSafeReplayConvertor;
 import org.redisson.client.protocol.convertor.BooleanReplayConvertor;
 import org.redisson.client.protocol.convertor.DoubleReplayConvertor;
 import org.redisson.client.protocol.convertor.VoidReplayConvertor;
@@ -203,78 +204,9 @@ public class RedissonConnection extends AbstractRedisConnection {
         return read(key, StringCodec.INSTANCE, RedisCommands.EXISTS, key);
     }
     
-    private void checkExecution(final RPromise<Long> result, final AtomicReference<Throwable> failed,
-            final AtomicLong count, final AtomicLong executed) {
-        if (executed.decrementAndGet() == 0) {
-            if (failed.get() != null) {
-                if (count.get() > 0) {
-                    RedisException ex = new RedisException("" + count.get() + " keys has been deleted. But one or more nodes has an error", failed.get());
-                    result.tryFailure(ex);
-                } else {
-                    result.tryFailure(failed.get());
-                }
-            } else {
-                result.trySuccess(count.get());
-            }
-        }
-    }
-
-    private RFuture<Long> executeAsync(RedisStrictCommand<Long> command, byte[] ... keys) {
-        if (!executorService.getConnectionManager().isClusterMode()) {
-            return executorService.writeAsync(null, command, Arrays.asList(keys).toArray());
-        }
-
-        Map<MasterSlaveEntry, List<byte[]>> range2key = new HashMap<MasterSlaveEntry, List<byte[]>>();
-        for (byte[] key : keys) {
-            int slot = executorService.getConnectionManager().calcSlot(key);
-            MasterSlaveEntry entry = executorService.getConnectionManager().getEntry(slot);
-            List<byte[]> list = range2key.get(entry);
-            if (list == null) {
-                list = new ArrayList<byte[]>();
-                range2key.put(entry, list);
-            }
-            list.add(key);
-        }
-
-        final RPromise<Long> result = new RedissonPromise<Long>();
-        final AtomicReference<Throwable> failed = new AtomicReference<Throwable>();
-        final AtomicLong count = new AtomicLong();
-        final AtomicLong executed = new AtomicLong(range2key.size());
-        BiConsumer<List<?>, Throwable> listener = new BiConsumer<List<?>, Throwable>() {
-            @Override
-            public void accept(List<?> r, Throwable u) {
-                if (u == null) {    
-                    List<Long> result = (List<Long>) r;
-                    for (Long res : result) {
-                        if (res != null) {
-                            count.addAndGet(res);
-                        }
-                    }
-                } else {
-                    failed.set(u);
-                }
-                
-                checkExecution(result, failed, count, executed);
-            }
-        };
-
-        for (Entry<MasterSlaveEntry, List<byte[]>> entry : range2key.entrySet()) {
-            CommandBatchService es = new CommandBatchService(executorService.getConnectionManager());
-            for (byte[] key : entry.getValue()) {
-                es.writeAsync(entry.getKey(), null, command, key);
-            }
-
-            RFuture<List<?>> future = es.executeAsync();
-            future.onComplete(listener);
-        }
-
-        return result;
-    }
-    
     @Override
     public Long del(byte[]... keys) {
-        RFuture<Long> f = executeAsync(RedisCommands.DEL, keys);
-        return sync(f);
+        return write(keys[0], LongCodec.INSTANCE, RedisCommands.DEL, Arrays.asList(keys).toArray());
     }
     
     private static final RedisStrictCommand<DataType> TYPE = new RedisStrictCommand<DataType>("TYPE", new DataTypeConvertor());
@@ -543,10 +475,10 @@ public class RedissonConnection extends AbstractRedisConnection {
     
     @Override
     public List<byte[]> mGet(byte[]... keys) {
-        return write(keys[0], ByteArrayCodec.INSTANCE, MGET, Arrays.asList(keys).toArray());
+        return read(keys[0], ByteArrayCodec.INSTANCE, MGET, Arrays.asList(keys).toArray());
     }
 
-    private static final RedisCommand<Boolean> SET = new RedisCommand<Boolean>("SET", new BooleanReplayConvertor());
+    private static final RedisCommand<Boolean> SET = new RedisCommand<>("SET", new BooleanNullSafeReplayConvertor());
     
     @Override
     public Boolean set(byte[] key, byte[] value) {

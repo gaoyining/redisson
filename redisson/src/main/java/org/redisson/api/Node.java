@@ -27,6 +27,7 @@ import org.redisson.client.protocol.Time;
  * @author Nikita Koksharov
  *
  */
+@Deprecated
 public interface Node extends NodeAsync {
 
     enum InfoSection {ALL, DEFAULT, SERVER, CLIENTS, MEMORY, PERSISTENCE, STATS, REPLICATION, CPU, COMMANDSTATS, CLUSTER, KEYSPACE}

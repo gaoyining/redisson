@@ -4,6 +4,93 @@ Redisson Releases History
 
 Сonsider __[Redisson PRO](https://redisson.pro)__ version for advanced features and support by SLA.
 
+### 09-Jun-2020 - 3.13.1 released
+Feature - Spring Data Redis 2.3.0 integration  
+Feature - `setIfExists` method added to `RBucket`, `RBucketRx`, `RBucketReactive` interfaces  
+Feature - RExpirable interface added to RRateLimiter  
+
+Fixed - Topic channels connected to master node aren't resubscribed  
+Fixed - RedissonCacheStatisticsAutoConfiguration conditions aren't match  
+Fixed - `RTimeSeries.destroy()` method doesn't work  
+Fixed - Redis Cluster topology scanning stopped if error occured while adding new master  
+Fixed - StreamInfoDecoder to adapt to layout of XINFO response (thanks to @fawitte)  
+Fixed - Redis Cluster manager throws error Slot hasn't been discovered yet after failover  
+Fixed - Spring Data Redis `RedisConnection.set()` method returns null  
+Fixed - `RQueueReactive.poll(int limit)` method should return `Mono<List<V>>`  
+Fixed - `RQueueRx.poll(int limit)` method should return `Single<List<V>>`  
+Fixed - `RedissonSetMultimap.removeAll` method removes reference to nested set  
+Fixed - `WriteRedisConnectionException` is thrown after Redis Cluster failover  
+Fixed - `RBatch` object doesn't wait ending of sync slaves process  
+Fixed - ssl connection can't be established if Redis Sentinel was discovered by DNSMonitor  
+Fixed - some tasks are not executed if RedissonNode shutdown  
+Fixed - `NatMapper` is not applied to the first online Sentinel in list  
+
+### 25-May-2020 - 3.13.0 released
+Feature - __TimeSeries object added__. Please refer to [documentation](https://github.com/redisson/redisson/wiki/7.-distributed-collections/#723-time-series) for more details  
+Feature - `RLiveObjectService.findIds()` method implemented  
+Feature - `RLiveObjectService.count()` method implemented  
+Feature - `RLiveObjectService.delete()` method accepts multiple ids  
+
+Improvement - __default codec changed to MarshallingCodec__  
+
+Fixed - Lock acquisition hangs if Redis failed (regression since 3.12.5)  
+Fixed - `RLiveObjectService.merge()` method doesn't override collection state  
+Fixed - `PingConnectionHandler` doesn't report errors if PING command can't be sent  
+Fixed - `RObject.unlink()` method calls `deleteAsync()` inside instead of `unlinkAsync()` method (thanks to @AayushyaVajpayee)  
+Fixed - NPE thrown after logout Tomcat application  
+Fixed - Tomcat `UpdateValue` object throws NPE if getNext() returns null  
+Fixed - `RedissonTransactionalMapCache.put()` method inserts entries with incorrect TTLs  
+Fixed - connections to Redis master/slave are doubled after redis cluster failover  
+Fixed - `RejectedExecutionException` thrown by `RedisClient.connectAsync()` method during shutdown process  
+Fixed - cache isn't applied to hibernate collection, that is joined by non primary key field  
+Fixed - hibernate 5.3 doesn't wrap cache exception into CacheException object  
+Fixed - RedissonReactiveStringCommands.set using wrong SET RedisCommand (thanks to @xJoeWoo)  
+Fixed - netty errors should be logged at ERROR level  
+
+### 16-Apr-2020 - 3.12.5 released
+
+Improvement - increased `RLock` reliability during failover. `RedLock` was deprecated  
+
+Fixed - Map object is not updated after session change (thanks to @eager)  
+Fixed - `RedissonSessionRepository` doesn't handle PTTL = -2 (thanks to @eager)  
+Fixed - `RedissonSessionRepository` topic listener NPE race condition (thanks to @eager)  
+Fixed - `RedissonReactiveSubscription.subscribe()` and `receive()` methods aren't synchronized  
+Fixed - `RLiveObjectService` search with `Conditions.and()` returns wrong result  
+Fixed - Redisson Tomcat Manager doesn't store principal and authType session attributes  
+Fixed - Redisson is unable to start if first sentinel node in list is down  
+Fixed - Spring Data `RedissonConnection.del()` method doesn't participate in pipeline  
+Fixed - `RTopic.countListeners()` method returns wrong result  
+Fixed - `RRateLimiter.delete()` method doesn't delete all allocated Redis objects  
+Fixed - `RedissonBloomFilter` throws NPE (regression since 3.12.4)  
+Fixed - CommandBatchService throws NPE (regression since 3.12.4)  
+
+### 30-Mar-2020 - 3.12.4 released
+
+Feature - cacheProvider setting added to `LocalCacheConfiguration`, `ClusteredLocalCachedMapOptions`, `LocalCacheConfiguration` and Hibernate Local Cache regions  
+Feature - `NettyHook` object added  
+Feature - `LocalCachedMapOptions.storeMode` setting added  
+Feature - `nameMapper` setting added to `DropwizardMeterRegistryProvider`  
+Feature - `username` parameter added  
+Feature - `RedissonClient.getRedisNodes()` method added  
+Feature - `Config.useThreadClassLoader` setting added  
+Feature - `ListAddListener`, `ListInsertListener`, `ListRemoveListener`, `ListSetListener`, `ListTrimListener` added to `RList` object 
+
+Improvement - `MarshallingCodec` performance improvements  
+
+Fixed - RedissonSessionRepository doesn't use map's codec during changeSessionId method execution  
+Fixed - use `FSTConfiguration#deriveConfiguration` to preserve ConfType (thanks to Chris Eager)  
+Fixed - MGET executed on Spring Data connection should use SLAVE if readMode = SLAVE (thanks to Gil Milow)  
+Fixed - `XREADGROUP` and `XCLAIM` commands should be executed on Redis master  
+Fixed - `JsonJacksonCodec` unable to serialize removed attributes of Tomcat Session  
+Fixed - "response has been skipped due to timeout" error if pingConnectionInterval setting set and blocking command executed  
+Fixed - semaphore used during local cache clearing process isn't deleted  
+Fixed - `RPatternTopicRx()`, `RPatternTopicReactive()`, `RPatternTopic.addListenerAsync()` methods are don't work  
+Fixed - cache entry can't be updated if `JCache` instance created with `CreatedExpiryPolicy`  
+Fixed - `LocalCachedJCache.get()` method throws NPE  
+Fixed - RedisURI throws MalformedURLException for IPv6 hosts  
+Fixed - `LocalCachedJCache.removeAll()` and `LocalCachedJCache.clear()` methods are don't work  
+
+
 ### 28-Feb-2020 - 3.12.3 released
 
 LZ4Codec, SnappyCodec, SnappyCodecV2 codecs now use Kryo5Codec by default  

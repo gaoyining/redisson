@@ -110,7 +110,7 @@ public class RedissonBatchRxTest extends BaseRxTest {
         assertThat(sync(b2f2)).isEqualTo(2d);
     }
     
-    @Test(timeout = 15000)
+    @Test(timeout = 20000)
     public void testPerformance() {
         RMapRx<String, String> map = redisson.getMap("map");
         Map<String, String> m = new HashMap<String, String>();
@@ -450,7 +450,7 @@ public class RedissonBatchRxTest extends BaseRxTest {
         }
         e.shutdown();
         Assert.assertTrue(e.awaitTermination(30, TimeUnit.SECONDS));
-        List<?> s = sync(batch.execute());
+        List<?> s = sync(batch.execute()).getResponses();
         
         int i = 0;
         for (Object element : s) {
@@ -469,7 +469,7 @@ public class RedissonBatchRxTest extends BaseRxTest {
         batch.getAtomicLong("counter").incrementAndGet();
         batch.getAtomicLong("counter").incrementAndGet();
 
-        List<?> res = sync(batch.execute());
+        List<?> res = sync(batch.execute()).getResponses();
         Assert.assertEquals(5, res.size());
         Assert.assertTrue((Boolean)res.get(0));
         Assert.assertTrue((Boolean)res.get(1));
